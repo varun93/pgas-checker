@@ -133,36 +133,23 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
   ProgramStateRef State = C.getState();
   const RefState *SS = State->get<StreamMap>(symetricVariable);
 
-  // check if the destination is indeed a symmetric variable
-  if(Call.isGlobalCFunction("shmem_put")){
-     if (!SS) {
-       // create a sink node and report bug
-       std::cout << "Not a symmetric variable";
-       return;
-     }
+  // check if the destination variable is indeed a symmetric variable
+  if (!SS) {
+    // create a sink node and report bug
+    std::cout << "Destination is not a symmetric variable\n";
+    return;
   }
+  
   // check if we are trying to get unsynchronized access to a variable
-  else if(Call.isGlobalCFunction("shmem_get")){
+  if(Call.isGlobalCFunction("shmem_get")){
      if (SS && SS->isUnSynchronized()) {
-    	std::cout << "unsynchronized access to variable";
+    	std::cout << "unsynchronized access to variable\n";
         // generate a sink node
         return;
      }
   }
  
 }
-
-
-/*
-extern "C"
-void clang_registerCheckers (CheckerRegistry &registry) {
-  registry.addChecker<OpenSHMEMChecker>(
-      "example.OpenSHMEMChecker", "Disallows calls to functions called main");
-}
-
-extern "C"
-const char clang_analyzerAPIVersionString[] = CLANG_ANALYZER_API_VERSION_STRING;
-*/
 
 // finally register your checker!
 void ento::registerOpenSHMEMChecker(CheckerManager &mgr) {
