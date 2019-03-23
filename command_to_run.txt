@@ -1,0 +1,1 @@
+clang -Xanalyzer -analyzer-checker=core.MainCallChecker --analyze test_program.c
