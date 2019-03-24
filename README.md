@@ -14,7 +14,7 @@
 
 ```
 cd tests
-clang -Xanalyzer -analyzer-checker=core.MainCallChecker --analyze PROGRAM_TO_TEST open_shmem.c
+clang -Xanalyzer -analyzer-checker=core.OpenSHMEMChecker --analyze PROGRAM_TO_TEST open_shmem.c
 ```
 
 ## TODO
