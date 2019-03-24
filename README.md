@@ -22,5 +22,5 @@ clang -Xanalyzer -analyzer-checker=core.OpenSHMEMChecker --analyze PROGRAM_TO_TE
 - Add proper bug report.
 - Currently only symmetric variables on the heap is identified. Will soon add support for identifying all symmetric variables.
 - Yet to add support for catching other synchronization mechanisms like quiet etc.
-- Check if the pe is a power of two.
+- Make the code better 
 
