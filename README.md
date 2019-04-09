@@ -1,5 +1,7 @@
 ## OpenSHMEM Checker
 
+![alt text](./checker.png)
+
 **This is currently only experimental**
 
 - The checker identifies if a variable is a symmetric variable.
