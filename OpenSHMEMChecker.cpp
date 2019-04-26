@@ -52,7 +52,7 @@ class OpenSHMEMChecker : public Checker < check::PostCall, check::PreCall > {
 // end of anonymous namespace 
 
 // registring our program state
-REGISTER_MAP_WITH_PROGRAMSTATE(StreamMap, SymbolRef, RefState)
+REGISTER_MAP_WITH_PROGRAMSTATE(TrackVar, SymbolRef, RefState)
 
 // int* source = (int*) shmem_malloc(npes*sizeof(int));
 // shmem_put(TYPE *dest, const TYPE *source, size_t nelems, int pe);
@@ -84,7 +84,7 @@ void OpenSHMEMChecker::checkPostCall(const CallEvent &Call,
     	return;
   
     // mark it as unsynchronized
-    State = State->set<StreamMap>(symetricVariable, RefState::getUnsynchronized());
+    State = State->set<TrackVar>(symetricVariable, RefState::getUnsynchronized());
     // the the new state to the transition graph
     C.addTransition(State); 	
   }
@@ -94,14 +94,14 @@ void OpenSHMEMChecker::checkPostCall(const CallEvent &Call,
       // iterate through all the track variables so far variables
       // set each of the variables to synchronized
       ProgramStateRef State = C.getState();
-      StreamMapTy trackedVariables = State->get<StreamMap>();
-      for (StreamMapTy::iterator I = trackedVariables.begin(),
+      TrackVarTy trackedVariables = State->get<TrackVar>();
+      for (TrackVarTy::iterator I = trackedVariables.begin(),
                               E = trackedVariables.end(); I != E; ++I) {
         SymbolRef Sym = I->first;
-        const RefState *SS = State->get<StreamMap>(Sym);
+        const RefState *SS = State->get<TrackVar>(Sym);
         // mark only unsynchronized as synchronized
         if (SS && SS->isUnSynchronized()) {
-    	    State = State->set<StreamMap>(Sym, RefState::getSynchronized());
+    	    State = State->set<TrackVar>(Sym, RefState::getSynchronized());
             // the the new state to the transition graph
             C.addTransition(State);
 	}
@@ -131,10 +131,30 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
     return;
   
   ProgramStateRef State = C.getState();
-  const RefState *SS = State->get<StreamMap>(symetricVariable);
+  const RefState *SS = State->get<TrackVar>(symetricVariable);
 
   // check if the destination variable is indeed a symmetric variable
   if (!SS) {
+
+    /* check if the argument is a static variable; 
+        | |-ImplicitCastExpr 0x5564718 <col:15, col:16> 'void *' <BitCast>
+        | | `-UnaryOperator 0x55645c8 <col:15, col:16> 'int *' prefix '&' cannot overflow
+        | |   `-DeclRefExpr 0x55645a0 <col:16> 'int' lvalue Var 0x55644e0 'dest' 'int'
+    */
+	if (const clang::ImplicitCastExpr *implicitCastExpr = clang::dyn_cast<const clang::ImplicitCastExpr>(Call.getArgExpr(0))) {
+         if(const clang::UnaryOperator *unaryOperator = clang::dyn_cast<clang::UnaryOperator>(implicitCastExpr->getSubExpr())){
+          if(const clang::DeclRefExpr *DRE = clang::dyn_cast<clang::DeclRefExpr>(unaryOperator->getSubExpr())){
+                if(const clang::VarDecl *VD = clang::dyn_cast<clang::VarDecl>(DRE->getDecl())){
+                    if(VD->isStaticLocal()){
+                        ///std::cout << "Is a static variable " << VD->getQualifiedNameAsString() << "\n";
+                       	// currently doesn't support checking for synchronized access to static variable; so return for the time being
+			        return;
+			    }
+             }
+          }
+        }
+     }
+
     // create a sink node and report bug
     std::cout << "Destination is not a symmetric variable\n";
     return;
@@ -151,9 +171,39 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
  
 }
 
+void OpenSHMEMChecker::checkBind(SVal location, SVal val,
+                                           const Stmt *StoreE,
+                                           CheckerContext &C) const {
+ if (const DeclStmt *DS = dyn_cast<DeclStmt>(StoreE)) {
+      const VarDecl *VD = dyn_cast<VarDecl>(DS->getSingleDecl());
+      if(VD->isStaticLocal()){
+	VD->dump();
+	const Expr *e = VD->getInit(); 
+	const IntegerLiteral *IL = dyn_cast<IntegerLiteral>(e);
+	//SValBuilder &svalBuilder = C.getSValBuilder();
+	//SVal V = svalBuilder.makeIntVal(IL);
+	//SymbolRef symetricVariable  = V.getAsSymbol();
+	//QualType ty = VD->getType();
+        //SVal V = svalBuilder.makeIntVal(0, ty);	
+        //SymbolRef symetricVariable  = V.getAsSymbol();
+
+	 ProgramStateRef State = C.getState();
+         SymbolRef symetricVariable = State->getSValAsScalarOrLoc(e, C.getLocationContext()).getAsLocSymbol();
+
+	if(!symetricVariable)
+	 return;
+ 
+	std::cout << IL->getValue().signedRoundToDouble() << "\n"; 
+	std::cout << "A is static variable\n";
+        State = State->set<TrackVar>(symetricVariable, RefState::getUnsynchronized());
+    	C.addTransition(State);
+       }
+   }
+
+}
+
 // finally register your checker!
 void ento::registerOpenSHMEMChecker(CheckerManager &mgr) {
   mgr.registerChecker<OpenSHMEMChecker>();
 }
-
 
