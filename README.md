@@ -22,7 +22,5 @@ clang -Xanalyzer -analyzer-checker=core.OpenSHMEMChecker --analyze PROGRAM_TO_TE
 ## TODO
 
 - Add proper bug report.
-- Currently only symmetric variables on the heap is identified. Will soon add support for identifying all symmetric variables.
-- Yet to add support for catching other synchronization mechanisms like quiet etc.
-- Make the code better 
-
+- Yet to add support for catching other synchronization mechanisms like quiet etc. 
+- Synchronization mechanisms for symmetric variables allocated via static and global variables. 
