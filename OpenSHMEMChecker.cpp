@@ -16,8 +16,6 @@ using namespace ento;
 // defining an anynomous namespace
 namespace {
 
-typedef SmallVector<SymbolRef, 2> SymbolVector;
-
 // data structure to hold the program state
 struct RefState {
   private:
@@ -47,6 +45,8 @@ class OpenSHMEMChecker : public Checker < check::PostCall, check::PreCall > {
     void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
     // checks for shmem_get and shmem_put
     void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
+    // needed to check if the value bound to a variable has a storage class of static 
+    void checkBind(SVal location, SVal val, const Stmt *S, CheckerContext &C) const;
   };
 }
 // end of anonymous namespace 
