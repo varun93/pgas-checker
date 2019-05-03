@@ -167,18 +167,10 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
 void OpenSHMEMChecker::checkBind(SVal location, SVal val,
                                            const Stmt *StoreE,
                                            CheckerContext &C) const {
+	
  if (const DeclStmt *DS = dyn_cast<DeclStmt>(StoreE)) {
       const VarDecl *VD = dyn_cast<VarDecl>(DS->getSingleDecl());
       if(VD->isStaticLocal()){
-	VD->dump();
-	const Expr *e = VD->getInit(); 
-	const IntegerLiteral *IL = dyn_cast<IntegerLiteral>(e);
-	//SValBuilder &svalBuilder = C.getSValBuilder();
-	//SVal V = svalBuilder.makeIntVal(IL);
-	//SymbolRef symetricVariable  = V.getAsSymbol();
-	//QualType ty = VD->getType();
-        //SVal V = svalBuilder.makeIntVal(0, ty);	
-        //SymbolRef symetricVariable  = V.getAsSymbol();
 
 	 ProgramStateRef State = C.getState();
          SymbolRef symetricVariable = State->getSValAsScalarOrLoc(e, C.getLocationContext()).getAsLocSymbol();
@@ -186,12 +178,11 @@ void OpenSHMEMChecker::checkBind(SVal location, SVal val,
 	if(!symetricVariable)
 	 return;
  
-	std::cout << IL->getValue().signedRoundToDouble() << "\n"; 
-	std::cout << "A is static variable\n";
         State = State->set<TrackVar>(symetricVariable, RefState::getUnsynchronized());
     	C.addTransition(State);
        }
    }
+	
 
 }
 
