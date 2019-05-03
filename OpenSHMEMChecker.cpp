@@ -124,7 +124,7 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
     return;
 
   // get hold of the first argument which is the destination in our case
-  // shmem_(put|get)(TYPE *dest, ...params)
+  
   SymbolRef symetricVariable = Call.getArgSVal(0).getAsSymbol();
 
   if(!symetricVariable)
@@ -132,11 +132,12 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
   
   ProgramStateRef State = C.getState();
   const RefState *SS = State->get<TrackVar>(symetricVariable);
+  if (SS && SS->isUnSynchronized()) {
+    	std::cout << "unsynchronized access to variable\n";
+        return;
+  }
 
-  // check if the destination variable is indeed a symmetric variable
-  if (!SS) {
-
-    /* check if the argument is a static variable; 
+  /* check if the argument is a static variable; 
         | |-ImplicitCastExpr 0x5564718 <col:15, col:16> 'void *' <BitCast>
         | | `-UnaryOperator 0x55645c8 <col:15, col:16> 'int *' prefix '&' cannot overflow
         | |   `-DeclRefExpr 0x55645a0 <col:16> 'int' lvalue Var 0x55644e0 'dest' 'int'
@@ -154,21 +155,13 @@ void OpenSHMEMChecker::checkPreCall(const CallEvent &Call,
           }
         }
      }
-
+   // check if the destination variable is indeed a symmetric variable
+   if (!SS) {
     // create a sink node and report bug
     std::cout << "Destination is not a symmetric variable\n";
     return;
   }
-  
-  // check if we are trying to get unsynchronized access to a variable
-  if(Call.isGlobalCFunction("shmem_get")){
-     if (SS && SS->isUnSynchronized()) {
-    	std::cout << "unsynchronized access to variable\n";
-        // generate a sink node
-        return;
-     }
-  }
- 
+
 }
 
 void OpenSHMEMChecker::checkBind(SVal location, SVal val,
