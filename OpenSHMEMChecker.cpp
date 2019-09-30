@@ -28,7 +28,7 @@
     static const std::string UNSYNCHRONIZED_ACCESS;
   };
 
-
+  // these constants will be eventually be populated by a configuration file
   // constants
   const std::string OpenShmemConstants::SHMEM_MALLOC = "shmem_malloc";
   const std::string OpenShmemConstants::SHMEM_GET = "shmem_get";
