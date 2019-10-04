@@ -18,6 +18,7 @@
     static const std::string SHMEM_MALLOC;
     static const std::string SHMEM_GET;
     static const std::string SHMEM_PUT;
+    static const std::string SHMEM_FREE;
     static const std::string SHMEM_BARRIER;
   };
 
@@ -28,11 +29,12 @@
     static const std::string UNSYNCHRONIZED_ACCESS;
   };
 
-  // these constants will be eventually be populated by a configuration file
+
   // constants
   const std::string OpenShmemConstants::SHMEM_MALLOC = "shmem_malloc";
   const std::string OpenShmemConstants::SHMEM_GET = "shmem_get";
   const std::string OpenShmemConstants::SHMEM_PUT = "shmem_put";
+  const std::string OpenShmemConstants::SHMEM_FREE = "shmem_free";
   const std::string OpenShmemConstants::SHMEM_BARRIER = "shmem_barrier_all";
 
 
@@ -95,18 +97,25 @@
       }
 
 
-
+  /*
+    - Memory Allocation Routines = {"shmem_malloc", "...."}
+    - Synchronization Routines  = {"...."}
+  */
   void MainCallChecker::checkPostCall(const CallEvent &Call,
                                           CheckerContext &C) const {
     if (!Call.isGlobalCFunction())
       return;
 
+    // check for only allocation and barriers
     if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC) || Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)))
       return;
 
 
     ProgramStateRef State = C.getState();
   	
+    // check if a shmem memory allocation routine
+    // {"shem_malloc", "shmem_alloc", ...etc}
+    // if(Call is a memory allocation routine) { record it as a symmetric variable }
     if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
     	// Get the symbolic value corresponding to the file handle.
     	SymbolRef symetricVariable = Call.getReturnValue().getAsSymbol();
@@ -118,6 +127,7 @@
       C.addTransition(State); 	
     }
 
+    // if it  is
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)){ 
 
         // iterate through all the track variables so far variables
@@ -135,6 +145,16 @@
   	     }
       }
     }
+
+    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
+       SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
+       // remove from the state
+       if(freedVariable){
+          State = State->remove<CheckerState>(freedVariable);
+          C.addTransition(State);
+       }
+    }
+
   }
 
   //static int a = 0;
@@ -148,7 +168,7 @@
     if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET) || Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)))
       return;
 
-   
+    // remove the harcoding 
     SymbolRef symetricVariable = Call.getArgSVal(0).getAsSymbol();
     
     if(!symetricVariable)
@@ -161,7 +181,7 @@
       std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
       return;
    }
-   // extract these into some constants
+
    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET)){
        if (SS && SS->isUnSynchronized()) {
       	std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
