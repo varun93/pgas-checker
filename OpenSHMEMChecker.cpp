@@ -27,6 +27,7 @@
   public:
     static const std::string VARIABLE_NOT_SYMMETRIC;
     static const std::string UNSYNCHRONIZED_ACCESS;
+    static const std::string ACCESS_FREED_VARIABLE;
   };
 
 
@@ -41,6 +42,7 @@
   // error messages
   const std::string OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC = "Not a symmetric variable";
   const std::string OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS = "Unsynchronized access to variable";
+  const std::string OpenShmemErrorMessages::ACCESS_FREED_VARIABLE = "Trying to access a freed variable";
 
   // malloc null checks
   // unitialized get 
@@ -125,10 +127,15 @@
       State = State->add<UnintializedVariables>(symmetricVariable);
       // mark is synchronized by default
       State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
-      C.addTransition(State); 	
+
+      // remove the variable from the freed list if allocated again
+      if(State->contains<FreedVariables>(symmetricVariable)){
+        State = State->remove<FreedVariables>(symmetricVariable);
+      } 
+
+      C.addTransition(State);
     }
 
-    // if it  is
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)){ 
 
         // iterate through all the track variables so far variables
@@ -150,10 +157,17 @@
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)){
         SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
         const RefState *SS = State->get<CheckerState>(destVariable);
+
+        // remove the unintialized variables
+        if(State->contains<UnintializedVariables>(destVariable)){
+          State = State->remove<UnintializedVariables>(destVariable);
+        }   
+
         if (SS && SS->isSynchronized()) {
             State = State->set<CheckerState>(destVariable, RefState::getUnsynchronized());
-            C.addTransition(State);
          }
+
+         C.addTransition(State);
     }
     // add freed variables to a free list
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
@@ -175,14 +189,20 @@
     if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET) || Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)))
       return;
 
-    // remove the harcoding 
-    SymbolRef symetricVariable = Call.getArgSVal(0).getAsSymbol();
+    // remove the harcoding of variable index
+    SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
     
-    if(!symetricVariable)
+    if(!symmetricVariable)
       return;
-    
+
     ProgramStateRef State = C.getState();
-    const RefState *SS = State->get<CheckerState>(symetricVariable);
+
+    if(State->contains<FreedVariables>(symmetricVariable)){
+      std::cout << OpenShmemErrorMessages::ACCESS_FREED_VARIABLE;
+      return;
+    }
+    
+    const RefState *SS = State->get<CheckerState>(symmetricVariable);
 
     if (!SS) {
       std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
