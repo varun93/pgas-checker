@@ -76,9 +76,13 @@
       void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
     };
   }
-  // end of anonymous namespace 
 
+  // map to hold the state of the variable; synchronized or unsynchronized
   REGISTER_MAP_WITH_PROGRAMSTATE(CheckerState, SymbolRef, RefState)
+  // set of unitilized variables
+  REGISTER_SET_WITH_PROGRAMSTATE(UnintializedVariables, SymbolRef)
+  // set of freed variables
+  REGISTER_SET_WITH_PROGRAMSTATE(FreedVariables, SymbolRef)
 
   // int* source = (int*) shmem_malloc(npes*sizeof(int));
   // shmem_put(TYPE *dest, const TYPE *source, size_t nelems, int pe);
@@ -112,12 +116,15 @@
     // if(Call is a memory allocation routine) { record it as a symmetric variable }
     if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
     	// Get the symbolic value corresponding to the file handle.
-    	SymbolRef symetricVariable = Call.getReturnValue().getAsSymbol();
+    	SymbolRef symmetricVariable = Call.getReturnValue().getAsSymbol();
     	
-    	if (!symetricVariable)
+    	if (!symmetricVariable)
       	return;
-   
-      State = State->set<CheckerState>(symetricVariable, RefState::getSynchronized());
+      
+      // add unitilized variables to unitilized list
+      State = State->add<UnintializedVariables>(symmetricVariable);
+      // mark is synchronized by default
+      State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
       C.addTransition(State); 	
     }
 
@@ -148,13 +155,11 @@
             C.addTransition(State);
          }
     }
+    // add freed variables to a free list
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
        SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
-       // remove from the state
-       if(freedVariable){
-          State = State->remove<CheckerState>(freedVariable);
-          C.addTransition(State);
-       }
+       State = State->add<FreedVariables>(freedVariable);
+       C.addTransition(State);
     }
 
   }
