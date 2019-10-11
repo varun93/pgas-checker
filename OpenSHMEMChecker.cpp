@@ -42,6 +42,8 @@
   const std::string OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC = "Not a symmetric variable";
   const std::string OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS = "Unsynchronized access to variable";
 
+  // malloc null checks
+  // unitialized get 
   // defining an anynomous namespace
   namespace {
 
@@ -83,20 +85,6 @@
   // shmem_get(TYPE *dest, const TYPE *source, size_t nelems, int pe);
 
 
-  //ImplicitCastExpr *implicit = cast<ImplicitCastExpr>(expr);
-
-  const clang::DeclRefExpr *declRefExprViaImplicit(const clang::Expr *expr)
-      {
-          const clang::DeclRefExpr *declRefExpr = clang::dyn_cast<clang::DeclRefExpr>(expr);
-          if (!declRefExpr) {
-              if (const clang::ImplicitCastExpr *implicitCastExpr = clang::dyn_cast<const clang::ImplicitCastExpr>(expr)) {
-                  declRefExpr = clang::dyn_cast<const clang::DeclRefExpr>(*implicitCastExpr->child_begin());
-              }
-          }
-          return declRefExpr;
-      }
-
-
   /*
     - Memory Allocation Routines = {"shmem_malloc", "...."}
     - Synchronization Routines  = {"...."}
@@ -106,10 +94,16 @@
     if (!Call.isGlobalCFunction())
       return;
 
-    // check for only allocation and barriers
-    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC) || Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)))
-      return;
-
+    // check for only certain routines:
+    // TODO: make this generic
+    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC) || 
+          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER) ||
+          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT) || 
+          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)
+         )){
+        return;
+    }
+      
 
     ProgramStateRef State = C.getState();
   	
@@ -123,7 +117,7 @@
     	if (!symetricVariable)
       	return;
    
-      State = State->set<CheckerState>(symetricVariable, RefState::getUnsynchronized());
+      State = State->set<CheckerState>(symetricVariable, RefState::getSynchronized());
       C.addTransition(State); 	
     }
 
@@ -145,7 +139,15 @@
   	     }
       }
     }
-
+    // mark the variable as unsynchronized only on a put call
+    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)){
+        SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
+        const RefState *SS = State->get<CheckerState>(destVariable);
+        if (SS && SS->isSynchronized()) {
+            State = State->set<CheckerState>(destVariable, RefState::getUnsynchronized());
+            C.addTransition(State);
+         }
+    }
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
        SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
        // remove from the state
@@ -186,7 +188,7 @@
        if (SS && SS->isUnSynchronized()) {
       	std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
           // generate a sink node
-          return;
+        return;
        }
     }
    
