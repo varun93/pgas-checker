@@ -8,6 +8,10 @@
 - Checks is the destination variable is a symmetric variable.
 - Catches unsynchronized access to variables via shmem_get.
 
+## How to include the checker?
+- Include your checker file in the `CMakeLists.txt` file
+- Navigate to the build folder and `make clang -j CORES_NUM`
+
 ## Tests
 
 - all_is_well.c : Correct Open Shmem Program
