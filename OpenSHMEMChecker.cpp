@@ -13,6 +13,7 @@
   using namespace ento;
 
 
+  // defining checker specific constants; in future maybe move it to a different file
   class OpenShmemConstants {
   public:
     static const std::string SHMEM_MALLOC;
@@ -28,6 +29,7 @@
     static const std::string VARIABLE_NOT_SYMMETRIC;
     static const std::string UNSYNCHRONIZED_ACCESS;
     static const std::string ACCESS_FREED_VARIABLE;
+    static const std::string ACCESS_UNINTIALIZED_VARIABLE;
   };
 
 
@@ -43,6 +45,7 @@
   const std::string OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC = "Not a symmetric variable";
   const std::string OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS = "Unsynchronized access to variable";
   const std::string OpenShmemErrorMessages::ACCESS_FREED_VARIABLE = "Trying to access a freed variable";
+  const std::string OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE = "Trying to access a unitialized variable";
 
   // malloc null checks
   // unitialized get 
@@ -50,6 +53,9 @@
   namespace {
 
 
+  // this is a custom data structure 
+  // the user is free to define custom data structures as long as they overload the == operator and override Profile method
+  // Don't ask me why so!! 
   struct RefState {
     private:
       enum Kind { Synchronized, Unsynchronized } K;
@@ -62,6 +68,7 @@
       static RefState getSynchronized() { return RefState(Synchronized); }
       static RefState getUnsynchronized() { return RefState(Unsynchronized); }
 
+      // overloading of == comparison operator 
       bool operator==(const RefState &X) const {
         return K == X.K;
       }
@@ -70,9 +77,11 @@
       }
   };
 
+  // I know this is a bad name; as you might have guessed ripped from an example checker and too lazy to change it later!
   class MainCallChecker : public Checker <check::PostCall, check::PreCall> {
     mutable std::unique_ptr<BugType> BT;
-   
+    
+    // define the event listeners; in our case pre and post call
     public:
       void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
       void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
@@ -100,8 +109,7 @@
     if (!Call.isGlobalCFunction())
       return;
 
-    // check for only certain routines:
-    // TODO: make this generic
+    // this is very ugly, try to make this generic, one possibility is to have some find of a filter functionality
     if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC) || 
           Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER) ||
           Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT) || 
@@ -163,6 +171,7 @@
           State = State->remove<UnintializedVariables>(destVariable);
         }   
 
+        // now mark the variable as unsynchronized on a *_put operation
         if (SS && SS->isSynchronized()) {
             State = State->set<CheckerState>(destVariable, RefState::getUnsynchronized());
          }
@@ -186,7 +195,8 @@
     if (!Call.isGlobalCFunction())
       return;
 
-    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET) || Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)))
+    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET) ||
+         Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)))
       return;
 
     // remove the harcoding of variable index
@@ -197,7 +207,9 @@
 
     ProgramStateRef State = C.getState();
 
+    // complain if an access it made to the freed variables 
     if(State->contains<FreedVariables>(symmetricVariable)){
+      // TODOS: replace couts with bug reports 
       std::cout << OpenShmemErrorMessages::ACCESS_FREED_VARIABLE;
       return;
     }
@@ -205,14 +217,22 @@
     const RefState *SS = State->get<CheckerState>(symmetricVariable);
 
     if (!SS) {
+      // TODOS: replace couts with bug reports
       std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
       return;
    }
 
    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET)){
+
+       if(State->contains<UnintializedVariables>(symmetricVariable)){
+        // TODOS: replace couts with bug reports 
+        std::cout << OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
+        return;
+       }  
+
+       // if the user is trying to access an unintialized bit of memory
        if (SS && SS->isUnSynchronized()) {
       	std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
-          // generate a sink node
         return;
        }
     }
@@ -223,5 +243,3 @@
   void ento::registerMainCallChecker(CheckerManager &mgr) {
     mgr.registerChecker<MainCallChecker>();
   }
-
-
