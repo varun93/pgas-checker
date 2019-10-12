@@ -6,7 +6,7 @@
 
 Although this is checker is meant for static analysis of an OpenShmem source, the ultimate goal of the project is to extended to any library following one-sided communication since they share similar semantics. 
 
-**Coming Soon**
+**Coming Soon**  
 A concrete detailed roadmap for the project.
 
 - The checker identifies if a variable is a symmetric variable.
