@@ -2,7 +2,12 @@
 
 ![alt text](./checker.png)
 
-**This is currently only experimental**
+**This is currently experimental**
+
+Although this is checker is meant for static analysis of an OpenShmem source, the ultimate goal of the project is to extended to any library following one-sided communication since they share similar semantics. 
+
+**Coming Soon**
+A concrete detailed roadmap for the project.
 
 - The checker identifies if a variable is a symmetric variable.
 - Checks is the destination variable is a symmetric variable.
@@ -16,7 +21,9 @@
 
 - all_is_well.c : Correct Open Shmem Program
 - destination_not_symmetric.c : Destination is not a symmetric variable
-- unsynchronized_access.c :Unsynchronized access of shmem_get
+- unsynchronized_access.c : Unsynchronized access of shmem_get
+- use_after_free.c : Catch use after free bugs
+- unintialized_access.c - Check if a shmem_get operation is on an unintialized variable. 
 
 ```
 cd tests
