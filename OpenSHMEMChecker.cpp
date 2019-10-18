@@ -47,6 +47,9 @@
   const std::string OpenShmemErrorMessages::ACCESS_FREED_VARIABLE = "Trying to access a freed variable";
   const std::string OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE = "Trying to access a unitialized variable";
 
+
+  enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
+
   // malloc null checks
   // unitialized get 
   // defining an anynomous namespace
@@ -81,6 +84,13 @@
   class MainCallChecker : public Checker <check::PostCall, check::PreCall> {
     mutable std::unique_ptr<BugType> BT;
     
+    private:
+      void handleMemoryAllocations(int handler, SymbolRef allocatedVariable, CheckerContext &C) const;
+      void handleBarriers(int handler, CheckerContext &C) const;
+      void handleWrites(int handler, SymbolRef destVariable, CheckerContext &C) const;
+      void handleReads(int handler, SymbolRef sourceVariable, CheckerContext &C) const;
+      void handleMemoryDeallocations(int handler, SymbolRef freedVariable, CheckerContext &C) const;
+
     // define the event listeners; in our case pre and post call
     public:
       void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
@@ -100,72 +110,75 @@
   // shmem_get(TYPE *dest, const TYPE *source, size_t nelems, int pe);
 
 
-  /*
-    - Memory Allocation Routines = {"shmem_malloc", "...."}
-    - Synchronization Routines  = {"...."}
-  */
-  void MainCallChecker::checkPostCall(const CallEvent &Call,
-                                          CheckerContext &C) const {
-    if (!Call.isGlobalCFunction())
-      return;
-
-    // this is very ugly, try to make this generic, one possibility is to have some find of a filter functionality
-    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC) || 
-          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER) ||
-          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT) || 
-          Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)
-         )){
-        return;
-    }
-      
+  void handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
+                                          CheckerContext &C) {
 
     ProgramStateRef State = C.getState();
-  	
-    // check if a shmem memory allocation routine
-    // {"shem_malloc", "shmem_alloc", ...etc}
-    // if(Call is a memory allocation routine) { record it as a symmetric variable }
-    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
-    	// Get the symbolic value corresponding to the file handle.
-    	SymbolRef symmetricVariable = Call.getReturnValue().getAsSymbol();
-    	
-    	if (!symmetricVariable)
-      	return;
-      
-      // add unitilized variables to unitilized list
-      State = State->add<UnintializedVariables>(symmetricVariable);
-      // mark is synchronized by default
-      State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
+    // Get the symbolic value corresponding to the allocated memory
+    if (!allocatedVariable)
+      return;
+       
+    switch(handler) {
 
-      // remove the variable from the freed list if allocated again
-      if(State->contains<FreedVariables>(symmetricVariable)){
-        State = State->remove<FreedVariables>(symmetricVariable);
-      } 
+      case PRE_CALL :
+      break;
 
-      C.addTransition(State);
+      case POST_CALL : 
+        
+        // add unitilized variables to unitilized list
+        State = State->add<UnintializedVariables>(allocatedVariable);
+        // mark is synchronized by default
+        State = State->set<CheckerState>(allocatedVariable, RefState::getSynchronized());
+
+        // remove the variable from the freed list if allocated again
+        if(State->contains<FreedVariables>(allocatedVariable)){
+          State = State->remove<FreedVariables>(allocatedVariable);
+        } 
+
+        break;
+
     }
 
-    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)){ 
+    C.addTransition(State);
 
-        // iterate through all the track variables so far variables
-        // set each of the values to sy/nchronized
-        ProgramStateRef State = C.getState();
-        CheckerStateTy trackedVariables = State->get<CheckerState>();
-        for (CheckerStateTy::iterator I = trackedVariables.begin(),
-                                E = trackedVariables.end(); I != E; ++I) {
-          SymbolRef symmetricVariable = I->first;
-          const RefState *SS = State->get<CheckerState>(symmetricVariable);
-          // mark all symmetric variables as synchronized
-          if (SS && SS->isUnSynchronized()) {
-      	    State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
-            C.addTransition(State);
-  	     }
+  }
+
+
+  void handleBarriers(int handler, CheckerContext &C) {
+
+      ProgramStateRef State = C.getState();
+      CheckerStateTy trackedVariables = State->get<CheckerState>();
+
+      switch(handler) {
+          case PRE_CALL : break;
+          case POST_CALL : 
+              // iterate through all the track variables so far variables
+              // set each of the values to sy/nchronized
+              for (CheckerStateTy::iterator I = trackedVariables.begin(),
+                                      E = trackedVariables.end(); I != E; ++I) {
+                SymbolRef symmetricVariable = I->first;
+                const RefState *SS = State->get<CheckerState>(symmetricVariable);
+                // mark all symmetric variables as synchronized
+                if (SS && SS->isUnSynchronized()) {
+                  State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
+                  C.addTransition(State);
+               }
+              }
+            break;
       }
-    }
-    // mark the variable as unsynchronized only on a put call
-    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)){
-        SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
-        const RefState *SS = State->get<CheckerState>(destVariable);
+  }
 
+  void handleWrites(int handler, SymbolRef destVariable,
+                                          CheckerContext &C) {
+
+    ProgramStateRef State = C.getState();
+    const RefState *SS = State->get<CheckerState>(destVariable);
+
+    switch(handler) {
+
+      case PRE_CALL : break;
+
+      case POST_CALL : 
         // remove the unintialized variables
         if(State->contains<UnintializedVariables>(destVariable)){
           State = State->remove<UnintializedVariables>(destVariable);
@@ -176,19 +189,85 @@
             State = State->set<CheckerState>(destVariable, RefState::getUnsynchronized());
          }
 
-         C.addTransition(State);
+        break;
     }
-    // add freed variables to a free list
+
+    
+    C.addTransition(State);
+
+  }
+
+  void handleReads(int handler, SymbolRef sourceVariable,
+                                          CheckerContext &C) {
+
+    switch(handler) {
+
+      case PRE_CALL : break;
+
+      case POST_CALL :  break;
+
+    }
+
+  } 
+
+
+  void handleMemoryDeallocations(int handler, SymbolRef freedVariable,
+                                          CheckerContext &C) {
+
+      ProgramStateRef State = C.getState();
+
+      switch(handler) {
+        case PRE_CALL : 
+         break;
+        case POST_CALL : 
+          // add it to the freed variable set; since it is adding it multiple times should have the same effect
+          State = State->add<FreedVariables>(freedVariable);
+          
+          // stop tracking the variables which have been tracked
+          const RefState *SS = State->get<CheckerState>(freedVariable);
+          if(SS){  
+            // remove from the map
+            State = State->remove<CheckerState>(freedVariable);
+          }
+        break;
+      }
+     
+      C.addTransition(State);
+  }
+ 
+  /*
+    - Memory Allocation Routines = {"shmem_malloc", "...."}
+    - Synchronization Routines  = {"...."}
+  */
+  void MainCallChecker::checkPostCall(const CallEvent &Call,
+                                          CheckerContext &C) const {
+    if (!Call.isGlobalCFunction())
+      return;
+
+    // check if a shmem memory allocation routine
+    // {"shem_malloc", "shmem_alloc", ...etc}
+    // if(Call is a memory allocation routine) { record it as a symmetric variable }
+    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
+      SymbolRef allocatedVariable = Call.getReturnValue().getAsSymbol();
+      handleMemoryAllocations(POST_CALL, allocatedVariable, C);
+    }
+
+    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)){ 
+      handleBarriers(POST_CALL, C);
+    }
+    // mark the variable as unsynchronized only on a put call
+    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)){
+      SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
+      handleWrites(POST_CALL, destVariable, C);
+    }
+    // track freed variables to a free list
     else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
-       SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
-       State = State->add<FreedVariables>(freedVariable);
-       C.addTransition(State);
+      SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
+      handleMemoryDeallocations(POST_CALL, freedVariable, C);
     }
 
   }
 
-  //static int a = 0;
-  //              |
   //shmem_get(a,......); void * 
   void MainCallChecker::checkPreCall(const CallEvent &Call,
                                          CheckerContext &C) const {
@@ -243,3 +322,5 @@
   void ento::registerMainCallChecker(CheckerManager &mgr) {
     mgr.registerChecker<MainCallChecker>();
   }
+
+
