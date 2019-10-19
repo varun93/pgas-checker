@@ -54,31 +54,29 @@
   // unitialized get 
   // defining an anynomous namespace
   namespace {
+   // this is a custom data structure 
+    // the user is free to define custom data structures as long as they overload the == operator and override Profile method
+    // Don't ask me why so!! 
+    struct RefState {
+      private:
+        enum Kind { Synchronized, Unsynchronized } K;
+        RefState(Kind InK) : K(InK) { }
 
+      public:
+        bool isSynchronized() const { return K == Synchronized; }
+        bool isUnSynchronized() const { return K == Unsynchronized; }
 
-  // this is a custom data structure 
-  // the user is free to define custom data structures as long as they overload the == operator and override Profile method
-  // Don't ask me why so!! 
-  struct RefState {
-    private:
-      enum Kind { Synchronized, Unsynchronized } K;
-      RefState(Kind InK) : K(InK) { }
+        static RefState getSynchronized() { return RefState(Synchronized); }
+        static RefState getUnsynchronized() { return RefState(Unsynchronized); }
 
-    public:
-      bool isSynchronized() const { return K == Synchronized; }
-      bool isUnSynchronized() const { return K == Unsynchronized; }
-
-      static RefState getSynchronized() { return RefState(Synchronized); }
-      static RefState getUnsynchronized() { return RefState(Unsynchronized); }
-
-      // overloading of == comparison operator 
-      bool operator==(const RefState &X) const {
-        return K == X.K;
-      }
-      void Profile(llvm::FoldingSetNodeID &ID) const {
-        ID.AddInteger(K);
-      }
-  };
+        // overloading of == comparison operator 
+        bool operator==(const RefState &X) const {
+          return K == X.K;
+        }
+        void Profile(llvm::FoldingSetNodeID &ID) const {
+          ID.AddInteger(K);
+        }
+    };
 
   // I know this is a bad name; as you might have guessed ripped from an example checker and too lazy to change it later!
   class MainCallChecker : public Checker <check::PostCall, check::PreCall> {
@@ -88,7 +86,7 @@
       void handleMemoryAllocations(int handler, SymbolRef allocatedVariable, CheckerContext &C) const;
       void handleBarriers(int handler, CheckerContext &C) const;
       void handleWrites(int handler, SymbolRef destVariable, CheckerContext &C) const;
-      void handleReads(int handler, SymbolRef sourceVariable, CheckerContext &C) const;
+      void handleReads(int handler, SymbolRef sourceVariable, ProgramStateRef State) const;
       void handleMemoryDeallocations(int handler, SymbolRef freedVariable, CheckerContext &C) const;
 
     // define the event listeners; in our case pre and post call
@@ -97,6 +95,7 @@
       void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
     };
   }
+  
 
   // map to hold the state of the variable; synchronized or unsynchronized
   REGISTER_MAP_WITH_PROGRAMSTATE(CheckerState, SymbolRef, RefState)
@@ -109,9 +108,19 @@
   // shmem_put(TYPE *dest, const TYPE *source, size_t nelems, int pe);
   // shmem_get(TYPE *dest, const TYPE *source, size_t nelems, int pe);
 
+  // TODO
+  bool checkIfSymmetric(SymbolRef variable, ProgramStateRef State) {
+    return false;
+  }
 
-  void handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
-                                          CheckerContext &C) {
+  // TODO
+  bool checkIfFreed(SymbolRef variable, ProgramStateRef State) {
+    return false;
+  }
+
+
+  void MainCallChecker::handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
+                                          CheckerContext &C) const {
 
     ProgramStateRef State = C.getState();
     // Get the symbolic value corresponding to the allocated memory
@@ -144,7 +153,7 @@
   }
 
 
-  void handleBarriers(int handler, CheckerContext &C) {
+  void MainCallChecker::handleBarriers(int handler, CheckerContext &C) const {
 
       ProgramStateRef State = C.getState();
       CheckerStateTy trackedVariables = State->get<CheckerState>();
@@ -168,8 +177,8 @@
       }
   }
 
-  void handleWrites(int handler, SymbolRef destVariable,
-                                          CheckerContext &C) {
+  void MainCallChecker::handleWrites(int handler, SymbolRef destVariable,
+                                          CheckerContext &C) const {
 
     ProgramStateRef State = C.getState();
     const RefState *SS = State->get<CheckerState>(destVariable);
@@ -197,12 +206,27 @@
 
   }
 
-  void handleReads(int handler, SymbolRef sourceVariable,
-                                          CheckerContext &C) {
+  void MainCallChecker::handleReads(int handler, SymbolRef symmetricVariable, ProgramStateRef State) const {
+
+    const RefState *SS = State->get<CheckerState>(symmetricVariable);
 
     switch(handler) {
 
-      case PRE_CALL : break;
+      case PRE_CALL : 
+
+        if(State->contains<UnintializedVariables>(symmetricVariable)){
+          // TODOS: replace couts with bug reports 
+          std::cout << OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
+          return;
+       }  
+
+       // if the user is trying to access an unintialized bit of memory
+       if (SS && SS->isUnSynchronized()) {
+        std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
+        return;
+       }
+
+      break;
 
       case POST_CALL :  break;
 
@@ -211,8 +235,8 @@
   } 
 
 
-  void handleMemoryDeallocations(int handler, SymbolRef freedVariable,
-                                          CheckerContext &C) {
+  void MainCallChecker::handleMemoryDeallocations(int handler, SymbolRef freedVariable,
+                                          CheckerContext &C) const {
 
       ProgramStateRef State = C.getState();
 
@@ -247,6 +271,7 @@
     // check if a shmem memory allocation routine
     // {"shem_malloc", "shmem_alloc", ...etc}
     // if(Call is a memory allocation routine) { record it as a symmetric variable }
+    // check if a memory 
     if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
       SymbolRef allocatedVariable = Call.getReturnValue().getAsSymbol();
       handleMemoryAllocations(POST_CALL, allocatedVariable, C);
@@ -286,6 +311,15 @@
 
     ProgramStateRef State = C.getState();
 
+    const RefState *SS = State->get<CheckerState>(symmetricVariable);
+
+    if (!SS) {
+      // TODOS: replace couts with bug reports
+      std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
+      return;
+    }
+
+
     // complain if an access it made to the freed variables 
     if(State->contains<FreedVariables>(symmetricVariable)){
       // TODOS: replace couts with bug reports 
@@ -293,27 +327,8 @@
       return;
     }
     
-    const RefState *SS = State->get<CheckerState>(symmetricVariable);
-
-    if (!SS) {
-      // TODOS: replace couts with bug reports
-      std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
-      return;
-   }
-
    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET)){
-
-       if(State->contains<UnintializedVariables>(symmetricVariable)){
-        // TODOS: replace couts with bug reports 
-        std::cout << OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
-        return;
-       }  
-
-       // if the user is trying to access an unintialized bit of memory
-       if (SS && SS->isUnSynchronized()) {
-      	std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
-        return;
-       }
+      handleReads(PRE_CALL, symmetricVariable, State);
     }
    
   }
