@@ -6,8 +6,19 @@
 
 Although this is checker is meant for static analysis of an OpenShmem source, the ultimate goal of the project is to extend it to any library following one-sided(Fire and Forget) communication semantics. 
 
-**Coming Soon**  
-A concrete detailed roadmap for the project.
+## Extending for libraries following One Sided Communication(Yet to be incorporated into the Main Checker)
+
+- Please check the folder ```checker_extension_ideation``` to get a sense of how to extend the checker for other libraries.
+- The basis of providing the extension is that libraries following this paradigm of communication have routines which fall under these  broad categories.
+    - Memory Allocation
+    - Memory Dellocation
+    - Write to Shared Memory(Can be blocking or Non Blocking)
+    - Read from Shared Memory
+    - Synchronization Barriers
+- Most routines would be categorized into one the above categories. The developer would add an entry to the map with the routine name as the
+key of the map and the value being a pair of <RoutineType, FunctionPointer>. The function pointer may be left null if the developer wishes to use the default implementation.  
+
+- The library developers need to implement their handler for  
 
 - The checker identifies if a variable is a symmetric variable.
 - Checks is the destination variable is a symmetric variable.
