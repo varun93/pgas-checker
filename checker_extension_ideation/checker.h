@@ -16,7 +16,8 @@ typedef enum routines {
 	MEMORY_ALLOC,
 	MEMORY_DEALLOC,
 	SYNCHRONIZATION,
-	WRITE_TO_MEMORY,
+	BLOCKING_WRITE,
+	NON_BLOCKING_WRITE,
 	READ_FROM_MEMORY
 } Routine;
 typedef std::pair<Routine, Handler> Pair;

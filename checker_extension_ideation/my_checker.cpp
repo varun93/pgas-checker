@@ -18,9 +18,13 @@ void mySynchronization(handlerArgs args) {
 	std::cout << "In my synchronization\n";
 } 
 
-// my write routine
-void myWrite(handlerArgs args) {
-	std::cout << "In my write\n";
+// my write routines
+void myBlockingWrite(handlerArgs args) {
+	std::cout << "In blocking write\n";
+} 
+
+void myNonBlockingWrite(handlerArgs args) {
+	std::cout << "In non blocking write write\n";
 } 
 
 // my allocation handler
@@ -28,11 +32,11 @@ void myRead(handlerArgs args) {
 	std::cout << "In my read\n";
 } 
 
-
 void addHandlers() {
     handlers.emplace("my_alloc", std::make_pair(MEMORY_ALLOC, myAlloc));
     handlers.emplace("my_free", std::make_pair(MEMORY_DEALLOC, (Handler)NULL));
     handlers.emplace("my_barrier", std::make_pair(SYNCHRONIZATION, mySynchronization));
-    handlers.emplace("my_write", std::make_pair(WRITE_TO_MEMORY, myWrite));
+    handlers.emplace("my_non_blocking_write", std::make_pair(NON_BLOCKING_WRITE, myNonBlockingWrite));
+    handlers.emplace("my_blocking_write", std::make_pair(BLOCKING_WRITE, myBlockingWrite));
     handlers.emplace("my_read", std::make_pair(READ_FROM_MEMORY, myRead));
 }

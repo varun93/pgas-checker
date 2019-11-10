@@ -24,9 +24,13 @@ void defaultSynchronization(handlerArgs args) {
 	std::cout << "Default Synchronization\n";
 } 
 
-// my write routine
-void defaultWrite(handlerArgs args) {
-	std::cout << "Default Write\n";
+// write routines
+void defaultBlockingWrite(handlerArgs args) {
+	std::cout << "Default Blocking Writes\n";
+} 
+
+void defaultNonBlockingWrite(handlerArgs args) {
+	std::cout << "Default NonBlocking Writes\n";
 } 
 
 // my allocation handler
@@ -78,7 +82,8 @@ void addDefaultHandlers() {
     defaults.emplace(MEMORY_ALLOC, defaultAlloc);
     defaults.emplace(MEMORY_DEALLOC, defaultDealloc);
     defaults.emplace(SYNCHRONIZATION, defaultSynchronization);
-    defaults.emplace(WRITE_TO_MEMORY, defaultWrite);
+    defaults.emplace(BLOCKING_WRITE, defaultBlockingWrite);
+    defaults.emplace(NON_BLOCKING_WRITE, defaultNonBlockingWrite);
     defaults.emplace(READ_FROM_MEMORY, defaultRead);
 }
 
