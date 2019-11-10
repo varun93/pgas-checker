@@ -2,8 +2,16 @@
 #include <utility>
 #include <unordered_map>
 
-// todo: change the signature; doesn't take a void type yet to decide on the signature
-typedef void (*Handler)(void); 
+
+// arguments for the handlers; 
+// the members would be replaced by actual checker arguments 
+typedef struct handlerArgs {
+	int handler;
+	std::string checkerContext;
+	std::string state;
+} handlerArgs;
+
+typedef void (*Handler)(handlerArgs); 
 typedef enum routines {
 	MEMORY_ALLOC,
 	MEMORY_DEALLOC,

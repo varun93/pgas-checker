@@ -4,27 +4,27 @@
 routineHandlers handlers;
 
 // memory allocation routine
-void myAlloc() {
+void myAlloc(handlerArgs args) {
 	std::cout << "In my alloc\n";
 } 
 
 // memory deallocation routine
-void myDealloc() {
+void myDealloc(handlerArgs args) {
 	std::cout << "In my dealloc\n";
 } 
 
 // synchronization routine
-void mySynchronization() {
+void mySynchronization(handlerArgs args) {
 	std::cout << "In my synchronization\n";
 } 
 
 // my write routine
-void myWrite() {
+void myWrite(handlerArgs args) {
 	std::cout << "In my write\n";
 } 
 
 // my allocation handler
-void myRead() {
+void myRead(handlerArgs args) {
 	std::cout << "In my read\n";
 } 
 

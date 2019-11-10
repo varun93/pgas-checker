@@ -10,27 +10,27 @@ typedef std::unordered_map<Routine, Handler> defaultHandlers;
 defaultHandlers defaults;
 
 // memory allocation routine
-void defaultAlloc() {
+void defaultAlloc(handlerArgs args) {
 	std::cout << "Default Alloc\n";
 } 
 
 // memory deallocation routine
-void defaultDealloc() {
+void defaultDealloc(handlerArgs args) {
 	std::cout << "Default Dealloc\n";
 } 
 
 // synchronization routine
-void defaultSynchronization() {
+void defaultSynchronization(handlerArgs args) {
 	std::cout << "Default Synchronization\n";
 } 
 
 // my write routine
-void defaultWrite() {
+void defaultWrite(handlerArgs args) {
 	std::cout << "Default Write\n";
 } 
 
 // my allocation handler
-void defaultRead() {
+void defaultRead(handlerArgs args) {
 	std::cout << "Default Read\n";
 } 
 
@@ -46,7 +46,7 @@ Handler getDefaultHandler(Routine routineType) {
     return (Handler)NULL;
 }
 
-void event_handler(std::string routineName) {
+void event_handler(std::string routineName, handlerArgs args) {
 
     // usage; this is how it would be used in the main checker
     routineHandlers::const_iterator iterator = handlers.find(routineName);
@@ -66,7 +66,7 @@ void event_handler(std::string routineName) {
     }
 
     if(routineHandler != NULL) {
-        routineHandler();
+        routineHandler(args);
     }
     else{
         std::cout << "No implementation found for this routine!\n";
@@ -84,14 +84,16 @@ void addDefaultHandlers() {
 
 int main() {
 
+    handlerArgs args;
+
     // add default handlers
     addDefaultHandlers();
     // add 
     addHandlers();
     // since the library doesn't specify any specific actions it invokes the default implementation 
-    event_handler("my_free");
+    event_handler("my_free", args);
     // invokes the specified handler
-    event_handler("my_alloc");
+    event_handler("my_alloc", args);
 
     return 0;
 }
