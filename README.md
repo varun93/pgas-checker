@@ -6,7 +6,7 @@
 
 Although this is checker is meant for static analysis of an OpenShmem source, the ultimate goal of the project is to extend it to any library following one-sided(Fire and Forget) communication semantics. 
 
-## Extending for libraries following One Sided Communication(Yet to be incorporated into the Main Checker)
+**Extending for libraries following One Sided Communication(Yet to be incorporated into the Main Checker)**
 
 - Please check the folder ```checker_extension_ideation``` to get a sense of how to extend the checker for other libraries.
 - The basis of providing the extension is that libraries following this paradigm of communication have routines which fall under these  broad categories.
