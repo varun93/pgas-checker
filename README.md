@@ -24,9 +24,10 @@ key of the map and the value being a pair of <RoutineType, FunctionPointer>. The
 - Checks is the destination variable is a symmetric variable.
 - Catches unsynchronized access to variables via shmem_get.
 
-## How to include the checker?
-- Include your checker file in the `CMakeLists.txt` file
-- Navigate to the build folder and `make clang -j CORES_NUM`
+## How to include your checker?
+- Navigate to `clang/lib/StaticAnalyzer/Checkers` directory.
+- Add your checker file.Include the checker file in the `CMakeLists.txt` file.
+- Build clang - Navigate to the build directory, do `make clang -j CORES_NUM`
 
 ## Tests
 
