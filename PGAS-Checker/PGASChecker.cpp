@@ -36,7 +36,6 @@
         }
     };
 
-  // I know this is a bad name; as you might have guessed ripped from an example checker and too lazy to change it later!
   class PGASChecker : public Checker <check::PostCall, check::PreCall> {
     mutable std::unique_ptr<BugType> BT;
     
@@ -52,6 +51,12 @@
     public:
       void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
       void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
+
+      void construct() { 
+        OpenShmemChecker::addHandlers();
+        // add default handlers here
+      } 
+
     };
   }
   

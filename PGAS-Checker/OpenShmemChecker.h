@@ -8,6 +8,8 @@
   };
 
 
+ class OpenShmemChecker;
+
  class OpenShmemErrorMessages {
   public:
     static const std::string VARIABLE_NOT_SYMMETRIC;
@@ -15,7 +17,6 @@
     static const std::string ACCESS_FREED_VARIABLE;
     static const std::string ACCESS_UNINTIALIZED_VARIABLE;
   };
-
 
   // constants
   const std::string OpenShmemConstants::SHMEM_MALLOC = "shmem_malloc";
