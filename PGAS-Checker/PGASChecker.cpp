@@ -1,51 +1,10 @@
   // TODO: remove uncessary imports
-  #include "ClangSACheckers.h"
-  #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
-  #include "clang/StaticAnalyzer/Core/Checker.h"
-  #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-  #include <clang/StaticAnalyzer/Core/CheckerRegistry.h>
-  #include <clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h>
-  #include "clang/StaticAnalyzer/Core/CheckerManager.h"
-  #include <iostream>
-  #include <utility>
+  
+  #include "PGASChecker.h"
+  #include "OpenShmemChecker.h"
 
   using namespace clang;
   using namespace ento;
-
-  // defining checker specific constants; in future maybe move it to a different file
-  class OpenShmemConstants {
-  public:
-    static const std::string SHMEM_MALLOC;
-    static const std::string SHMEM_GET;
-    static const std::string SHMEM_PUT;
-    static const std::string SHMEM_FREE;
-    static const std::string SHMEM_BARRIER;
-  };
-
-
- class OpenShmemErrorMessages {
-  public:
-    static const std::string VARIABLE_NOT_SYMMETRIC;
-    static const std::string UNSYNCHRONIZED_ACCESS;
-    static const std::string ACCESS_FREED_VARIABLE;
-    static const std::string ACCESS_UNINTIALIZED_VARIABLE;
-  };
-
-
-  // constants
-  const std::string OpenShmemConstants::SHMEM_MALLOC = "shmem_malloc";
-  const std::string OpenShmemConstants::SHMEM_GET = "shmem_get";
-  const std::string OpenShmemConstants::SHMEM_PUT = "shmem_put";
-  const std::string OpenShmemConstants::SHMEM_FREE = "shmem_free";
-  const std::string OpenShmemConstants::SHMEM_BARRIER = "shmem_barrier_all";
-
-
-  // error messages
-  const std::string OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC = "Not a symmetric variable";
-  const std::string OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS = "Unsynchronized access to variable";
-  const std::string OpenShmemErrorMessages::ACCESS_FREED_VARIABLE = "Trying to access a freed variable";
-  const std::string OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE = "Trying to access a unitialized variable";
-
 
   enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
 
@@ -78,7 +37,7 @@
     };
 
   // I know this is a bad name; as you might have guessed ripped from an example checker and too lazy to change it later!
-  class MainCallChecker : public Checker <check::PostCall, check::PreCall> {
+  class PGASChecker : public Checker <check::PostCall, check::PreCall> {
     mutable std::unique_ptr<BugType> BT;
     
     private:
@@ -119,7 +78,7 @@
   }
 
 
-  void MainCallChecker::handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
+  void PGASChecker::handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
                                           CheckerContext &C) const {
 
     ProgramStateRef State = C.getState();
@@ -153,7 +112,7 @@
   }
 
 
-  void MainCallChecker::handleBarriers(int handler, CheckerContext &C) const {
+  void PGASChecker::handleBarriers(int handler, CheckerContext &C) const {
 
       ProgramStateRef State = C.getState();
       CheckerStateTy trackedVariables = State->get<CheckerState>();
@@ -196,7 +155,7 @@
      }
   }
 
-   void MainCallChecker::handleNonBlockingWrites(int handler, SymbolRef destVariable,
+   void PGASChecker::handleNonBlockingWrites(int handler, SymbolRef destVariable,
                                           CheckerContext &C) const {
 
     ProgramStateRef State = C.getState();
@@ -215,7 +174,7 @@
 
   }
 
-  void MainCallChecker::handleBlockingWrites(int handler, SymbolRef destVariable,
+  void PGASChecker::handleBlockingWrites(int handler, SymbolRef destVariable,
                                           CheckerContext &C) const {
 
     ProgramStateRef State = C.getState();
@@ -238,7 +197,7 @@
 
   }
 
-  void MainCallChecker::handleReads(int handler, SymbolRef symmetricVariable, ProgramStateRef State) const {
+  void PGASChecker::handleReads(int handler, SymbolRef symmetricVariable, ProgramStateRef State) const {
 
     const RefState *SS = State->get<CheckerState>(symmetricVariable);
 
@@ -267,7 +226,7 @@
   } 
 
 
-  void MainCallChecker::handleMemoryDeallocations(int handler, SymbolRef freedVariable,
+  void PGASChecker::handleMemoryDeallocations(int handler, SymbolRef freedVariable,
                                           CheckerContext &C) const {
 
       ProgramStateRef State = C.getState();
@@ -295,7 +254,7 @@
     - Memory Allocation Routines = {"shmem_malloc", "...."}
     - Synchronization Routines  = {"...."}
   */
-  void MainCallChecker::checkPostCall(const CallEvent &Call,
+  void PGASChecker::checkPostCall(const CallEvent &Call,
                                           CheckerContext &C) const {
     
     const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
@@ -332,7 +291,7 @@
   }
 
   //shmem_get(a,......); void * 
-  void MainCallChecker::checkPreCall(const CallEvent &Call,
+  void PGASChecker::checkPreCall(const CallEvent &Call,
                                          CheckerContext &C) const {
 
     const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
@@ -378,8 +337,8 @@
   }
 
 
-  void ento::registerMainCallChecker(CheckerManager &mgr) {
-    mgr.registerChecker<MainCallChecker>();
+  void ento::registerPGASChecker(CheckerManager &mgr) {
+    mgr.registerChecker<PGASChecker>();
   }
 
 
