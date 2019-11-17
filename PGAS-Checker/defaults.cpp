@@ -48,11 +48,10 @@ void handleMemoryAllocations(int handler, const CallEvent &Call, CheckerContext 
 	      State = State->remove<FreedVariables>(allocatedVariable);
 	    } 
 
+	    C.addTransition(State);
 	    break;
 
 	}
-
-	C.addTransition(State);
 
 }
 
@@ -94,10 +93,10 @@ void handleNonBlockingWrites(int hanndler, const CallEvent &Call, CheckerContext
 	  case POST_CALL : 
 	    // remove the unintialized variables
 	    removeFromUnitializedList(State, destVariable);
+
+	    C.addTransition(State);
 	    break;
 	}
-
-	C.addTransition(State);
 
 }
 
@@ -116,11 +115,9 @@ void handleBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C)
 	    // mark as unsynchronized
 	    markAsUnsynchronized(State, destVariable);
 
+	    C.addTransition(State);
 	    break;
 	}
-
-
-	C.addTransition(State);
 
 }
 
@@ -172,8 +169,9 @@ void handleMemoryDeallocations(int handler, const CallEvent &Call, CheckerContex
 	        // remove from the map
 	        State = State->remove<CheckerState>(freedVariable);
 	      }
+	      C.addTransition(State);
 	    break;
    }
  
-   C.addTransition(State);
+   
 }

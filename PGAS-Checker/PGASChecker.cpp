@@ -140,7 +140,7 @@
     // get the invoked routine name
     std::string routineName = FD->getNameInfo().getAsString();
 
-    eventHandler((int)POST_CALL, routineName, Call, C);
+    eventHandler(POST_CALL, routineName, Call, C);
     
   }
 
@@ -152,7 +152,11 @@
     if (!FD)
       return;
 
-    // TODO: remove the harcoding of variable index
+    // TODO: Temp fix! place these checks into seperate functions
+    if(Call.getNumArgs() < 1)
+      return;
+
+    // TODO: remove the harcoding of variable index; 
     SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
     
     if(!symmetricVariable)
@@ -179,7 +183,7 @@
     // get the name of the invoked routine
     std::string routineName = FD->getNameInfo().getAsString();
 
-    eventHandler((int)PRE_CALL, routineName, Call, C);
+    eventHandler(PRE_CALL, routineName, Call, C);
    
   }
 
