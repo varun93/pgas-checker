@@ -8,7 +8,10 @@
   };
 
 
- class OpenShmemChecker;
+ class OpenShmemChecker {
+   public:
+    static void addHandlers();
+ };
 
  class OpenShmemErrorMessages {
   public:

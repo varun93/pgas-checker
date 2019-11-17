@@ -2,19 +2,20 @@
   
   #include "PGASChecker.h"
   #include "OpenShmemChecker.h"
-
+  
   using namespace clang;
   using namespace ento;
 
   enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
+  typedef std::unordered_map<int, Handler> defaultHandlers;
+  defaultHandlers defaults;
 
-  // malloc null checks
-  // unitialized get 
-  // defining an anynomous namespace
+  extern routineHandlers handlers;
+
   namespace {
-   // this is a custom data structure 
+
+    // this is a custom data structure 
     // the user is free to define custom data structures as long as they overload the == operator and override Profile method
-    // Don't ask me why so!! 
     struct RefState {
       private:
         enum Kind { Synchronized, Unsynchronized } K;
@@ -40,12 +41,10 @@
     mutable std::unique_ptr<BugType> BT;
     
     private:
-      void handleMemoryAllocations(int handler, SymbolRef allocatedVariable, CheckerContext &C) const;
-      void handleBarriers(int handler, CheckerContext &C) const;
-      void handleBlockingWrites(int handler, SymbolRef destVariable, CheckerContext &C) const;
-      void handleNonBlockingWrites(int handler, SymbolRef destVariable, CheckerContext &C) const;
-      void handleReads(int handler, SymbolRef sourceVariable, ProgramStateRef State) const;
-      void handleMemoryDeallocations(int handler, SymbolRef freedVariable, CheckerContext &C) const;
+      void eventHandler(int handler, std::string routineName, 
+                      const CallEvent &Call, CheckerContext &C);
+      void addDefaultHandlers();
+      Handler getDefaultHandler(Routine routineType);
 
     // define the event listeners; in our case pre and post call
     public:
@@ -55,6 +54,7 @@
       void construct() { 
         OpenShmemChecker::addHandlers();
         // add default handlers here
+        addDefaultHandlers();
       } 
 
     };
@@ -82,220 +82,70 @@
     return false;
   }
 
+  // TODO: change the integer to Macros
+  void PGASChecker::addDefaultHandlers() {
+    defaults.emplace(MEMORY_ALLOC, handleMemoryAllocations);
+    defaults.emplace(MEMORY_DEALLOC, handleMemoryDeallocations);
+    defaults.emplace(SYNCHRONIZATION, handleBarriers);
+    defaults.emplace(NON_BLOCKING_WRITE, handleNonBlockingWrites);
+    defaults.emplace(READ_FROM_MEMORY, handleReads);
+}
+  
+  Handler PGASChecker::getDefaultHandler(Routine routineType) {
 
-  void PGASChecker::handleMemoryAllocations(int handler, SymbolRef allocatedVariable,
-                                          CheckerContext &C) const {
+      defaultHandlers::const_iterator iterator = defaults.find(routineType);
 
-    ProgramStateRef State = C.getState();
-    // Get the symbolic value corresponding to the allocated memory
-    if (!allocatedVariable)
-      return;
-       
-    switch(handler) {
+      if(iterator != defaults.end()) {
+          return iterator->second; 
+      }
 
-      case PRE_CALL :
-      break;
+      return (Handler)NULL;
+  }
 
-      case POST_CALL : 
+  void PGASChecker::eventHandler(int handler, std::string routineName, 
+                      const CallEvent &Call, CheckerContext &C) const {
+
+      Handler routineHandler = NULL;
+      routineHandlers::const_iterator iterator = handlers.find(routineName);
+      
+      if(iterator != handlers.end()) {
+
+        Pair value = iterator->second;
+        Routine routineType = value.first;
         
-        // add unitilized variables to unitilized list
-        State = State->add<UnintializedVariables>(allocatedVariable);
-        // mark is synchronized by default
-        State = State->set<CheckerState>(allocatedVariable, RefState::getSynchronized());
+        // if the event handler exists invoke it; else call the default implementation
+        if(value.second) {
+          routineHandler = value.second ;
+        }
+        else {
+          routineHandler = getDefaultHandler(routineType);
+        }
 
-        // remove the variable from the freed list if allocated again
-        if(State->contains<FreedVariables>(allocatedVariable)){
-          State = State->remove<FreedVariables>(allocatedVariable);
-        } 
+        if(routineHandler != NULL) {
+            routineHandler(handler, Call, C);
+        }
+        else{
+            std::cout << "No implementation found for this routine!\n";
+        }
 
-        break;
-
-    }
-
-    C.addTransition(State);
-
-  }
-
-
-  void PGASChecker::handleBarriers(int handler, CheckerContext &C) const {
-
-      ProgramStateRef State = C.getState();
-      CheckerStateTy trackedVariables = State->get<CheckerState>();
-
-      switch(handler) {
-          case PRE_CALL : break;
-          case POST_CALL : 
-              // iterate through all the track variables so far variables
-              // set each of the values to sy/nchronized
-              for (CheckerStateTy::iterator I = trackedVariables.begin(),
-                                      E = trackedVariables.end(); I != E; ++I) {
-                SymbolRef symmetricVariable = I->first;
-                const RefState *SS = State->get<CheckerState>(symmetricVariable);
-                // mark all symmetric variables as synchronized
-                if (SS && SS->isUnSynchronized()) {
-                  State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
-                  C.addTransition(State);
-               }
-              }
-            break;
       }
-  }
-
-  // remove from the untialized list
-  void removeFromUnitializedList(ProgramStateRef State, SymbolRef variable) {
-
-      if(State->contains<UnintializedVariables>(variable)){
-          State = State->remove<UnintializedVariables>(variable);
-      }   
-  }
-
-  // mark as unsynchronized
-  void markAsUnsynchronized(ProgramStateRef State, SymbolRef variable) {
-
-    const RefState *SS = State->get<CheckerState>(variable);
-
-    // now mark the variable as unsynchronized on a *_put operation
-    if (SS && SS->isSynchronized()) {
-        State = State->set<CheckerState>(variable, RefState::getUnsynchronized());
-     }
-  }
-
-   void PGASChecker::handleNonBlockingWrites(int handler, SymbolRef destVariable,
-                                          CheckerContext &C) const {
-
-    ProgramStateRef State = C.getState();
-
-    switch(handler) {
-
-      case PRE_CALL : break;
-
-      case POST_CALL : 
-        // remove the unintialized variables
-        removeFromUnitializedList(State, destVariable);
-        break;
-    }
-
-    C.addTransition(State);
-
-  }
-
-  void PGASChecker::handleBlockingWrites(int handler, SymbolRef destVariable,
-                                          CheckerContext &C) const {
-
-    ProgramStateRef State = C.getState();
-   
-    switch(handler) {
-
-      case PRE_CALL : break;
-
-      case POST_CALL : 
-         
-        removeFromUnitializedList(State, destVariable);
-        // mark as unsynchronized
-        markAsUnsynchronized(State, destVariable);
-
-        break;
-    }
-
-    
-    C.addTransition(State);
-
-  }
-
-  void PGASChecker::handleReads(int handler, SymbolRef symmetricVariable, ProgramStateRef State) const {
-
-    const RefState *SS = State->get<CheckerState>(symmetricVariable);
-
-    switch(handler) {
-
-      case PRE_CALL : 
-
-        if(State->contains<UnintializedVariables>(symmetricVariable)){
-          // TODOS: replace couts with bug reports 
-          std::cout << OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
-          return;
-       }  
-
-       // if the user is trying to access an unintialized bit of memory
-       if (SS && SS->isUnSynchronized()) {
-        std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
-        return;
-       }
-
-      break;
-
-      case POST_CALL :  break;
-
-    }
-
-  } 
-
-
-  void PGASChecker::handleMemoryDeallocations(int handler, SymbolRef freedVariable,
-                                          CheckerContext &C) const {
-
-      ProgramStateRef State = C.getState();
-
-      switch(handler) {
-        case PRE_CALL : 
-         break;
-        case POST_CALL : 
-          // add it to the freed variable set; since it is adding it multiple times should have the same effect
-          State = State->add<FreedVariables>(freedVariable);
-          
-          // stop tracking the variables which have been tracked
-          const RefState *SS = State->get<CheckerState>(freedVariable);
-          if(SS){  
-            // remove from the map
-            State = State->remove<CheckerState>(freedVariable);
-          }
-        break;
-      }
-     
-      C.addTransition(State);
+  
   }
  
-  /*
-    - Memory Allocation Routines = {"shmem_malloc", "...."}
-    - Synchronization Routines  = {"...."}
-  */
   void PGASChecker::checkPostCall(const CallEvent &Call,
                                           CheckerContext &C) const {
-    
     const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
 
     if (!FD)
       return;
 
-    // get the name of the invoked routine
+    // get the invoked routine name
     std::string routineName = FD->getNameInfo().getAsString();
 
-    // // check if a shmem memory allocation routine
-    // // {"shem_malloc", "shmem_alloc", ...etc}
-    // if(Call is a memory allocation routine) { record it as a symmetric variable }
-    // check if a memory 
-    if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_MALLOC)){
-      SymbolRef allocatedVariable = Call.getReturnValue().getAsSymbol();
-      handleMemoryAllocations(POST_CALL, allocatedVariable, C);
-    }
-
-    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_BARRIER)){ 
-      handleBarriers(POST_CALL, C);
-    }
-    // mark the variable as unsynchronized only on a put call
-    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)){
-      SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
-      handleBlockingWrites(POST_CALL, destVariable, C);
-    }
-    // track freed variables to a free list
-    else if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_FREE)) {
-      SymbolRef freedVariable = Call.getArgSVal(0).getAsSymbol();
-      handleMemoryDeallocations(POST_CALL, freedVariable, C);
-    }
-
+    eventHandler(POST_CALL, routineName, Call, C);
+    
   }
 
-  //shmem_get(a,......); void * 
   void PGASChecker::checkPreCall(const CallEvent &Call,
                                          CheckerContext &C) const {
 
@@ -304,19 +154,13 @@
     if (!FD)
       return;
 
-    // get the name of the invoked routine
-    std::string routineName = FD->getNameInfo().getAsString();
-
-    if (!(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET) ||
-         Call.isGlobalCFunction(OpenShmemConstants::SHMEM_PUT)))
-      return;
-
     // TODO: remove the harcoding of variable index
     SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
     
     if(!symmetricVariable)
       return;
 
+    // TODO: extract this out of the function
     ProgramStateRef State = C.getState();
 
     const RefState *SS = State->get<CheckerState>(symmetricVariable);
@@ -327,17 +171,17 @@
       return;
     }
 
-
     // complain if an access it made to the freed variables 
     if(State->contains<FreedVariables>(symmetricVariable)){
       // TODOS: replace couts with bug reports 
       std::cout << OpenShmemErrorMessages::ACCESS_FREED_VARIABLE;
       return;
     }
-    
-   if(Call.isGlobalCFunction(OpenShmemConstants::SHMEM_GET)){
-      handleReads(PRE_CALL, symmetricVariable, State);
-    }
+  
+    // get the name of the invoked routine
+    std::string routineName = FD->getNameInfo().getAsString();
+
+    eventHandler(PRE_CALL, routineName, Call, C);
    
   }
 

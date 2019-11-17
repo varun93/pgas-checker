@@ -9,16 +9,13 @@
 #include <utility>
 #include <unordered_map>
 
+using namespace clang;
+using namespace ento;
+
 
 // arguments for the handlers; 
 // the members would be replaced by actual checker arguments 
-typedef struct handlerArgs {
-	int handler;
-	std::string checkerContext;
-	std::string state;
-} handlerArgs;
-
-typedef void (*Handler)(handlerArgs); 
+typedef void (*Handler)(int handler, const CallEvent &Call, CheckerContext &C); 
 typedef enum routines {
 	MEMORY_ALLOC,
 	MEMORY_DEALLOC,
@@ -30,3 +27,11 @@ typedef enum routines {
 typedef std::pair<Routine, Handler> Pair;
 // the key of the map is the routine name
 typedef std::unordered_map<std::string, Pair> routineHandlers;
+
+
+void handleMemoryAllocations(int handler, const CallEvent &Call, CheckerContext &C);
+void handleBarriers(int handler, const CallEvent &Call, CheckerContext &C);
+void handleNonBlockingWrites(int hanndler, const CallEvent &Call, CheckerContext &C);
+void handleBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C);
+void handleReads(int handler, const CallEvent &Call, CheckerContext &C);
+void handleMemoryDeallocations(int handler, const CallEvent &Call, CheckerContext &C);
