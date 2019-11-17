@@ -1,4 +1,4 @@
-## OpenSHMEM Checker
+## PGAS Checker
 
 ![alt text](./checker.png)
 
