@@ -9,8 +9,7 @@
   enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
   typedef std::unordered_map<int, Handler> defaultHandlers;
   defaultHandlers defaults;
-
-  extern routineHandlers handlers;
+  routineHandlers handlers;
 
   namespace {
 
@@ -41,10 +40,10 @@
     mutable std::unique_ptr<BugType> BT;
     
     private:
-      void eventHandler(int handler, std::string routineName, 
-                      const CallEvent &Call, CheckerContext &C);
+      void eventHandler(int handler, std::string &routineName, 
+                      const CallEvent &Call, CheckerContext &C) const;
       void addDefaultHandlers();
-      Handler getDefaultHandler(Routine routineType);
+      Handler getDefaultHandler(Routine routineType) const;
 
     // define the event listeners; in our case pre and post call
     public:
@@ -82,7 +81,6 @@
     return false;
   }
 
-  // TODO: change the integer to Macros
   void PGASChecker::addDefaultHandlers() {
     defaults.emplace(MEMORY_ALLOC, handleMemoryAllocations);
     defaults.emplace(MEMORY_DEALLOC, handleMemoryDeallocations);
@@ -91,7 +89,7 @@
     defaults.emplace(READ_FROM_MEMORY, handleReads);
 }
   
-  Handler PGASChecker::getDefaultHandler(Routine routineType) {
+  Handler PGASChecker::getDefaultHandler(Routine routineType) const {
 
       defaultHandlers::const_iterator iterator = defaults.find(routineType);
 
@@ -102,7 +100,7 @@
       return (Handler)NULL;
   }
 
-  void PGASChecker::eventHandler(int handler, std::string routineName, 
+  void PGASChecker::eventHandler(int handler, std::string &routineName, 
                       const CallEvent &Call, CheckerContext &C) const {
 
       Handler routineHandler = NULL;
@@ -142,7 +140,7 @@
     // get the invoked routine name
     std::string routineName = FD->getNameInfo().getAsString();
 
-    eventHandler(POST_CALL, routineName, Call, C);
+    eventHandler((int)POST_CALL, routineName, Call, C);
     
   }
 
@@ -181,10 +179,9 @@
     // get the name of the invoked routine
     std::string routineName = FD->getNameInfo().getAsString();
 
-    eventHandler(PRE_CALL, routineName, Call, C);
+    eventHandler((int)PRE_CALL, routineName, Call, C);
    
   }
-
 
   void ento::registerPGASChecker(CheckerManager &mgr) {
     mgr.registerChecker<PGASChecker>();
