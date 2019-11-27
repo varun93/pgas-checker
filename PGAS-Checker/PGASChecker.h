@@ -29,9 +29,13 @@ typedef std::pair<Routine, Handler> Pair;
 typedef std::unordered_map<std::string, Pair> routineHandlers;
 
 
-void handleMemoryAllocations(int handler, const CallEvent &Call, CheckerContext &C);
-void handleBarriers(int handler, const CallEvent &Call, CheckerContext &C);
-void handleNonBlockingWrites(int hanndler, const CallEvent &Call, CheckerContext &C);
-void handleBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C);
-void handleReads(int handler, const CallEvent &Call, CheckerContext &C);
-void handleMemoryDeallocations(int handler, const CallEvent &Call, CheckerContext &C);
+
+class DefaultHandlers {
+   public:
+   	static void handleMemoryAllocations(int handler, const CallEvent &Call, CheckerContext &C);
+	static void handleBarriers(int handler, const CallEvent &Call, CheckerContext &C);
+	static void handleNonBlockingWrites(int hanndler, const CallEvent &Call, CheckerContext &C);
+	static void handleBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C);
+	static void handleReads(int handler, const CallEvent &Call, CheckerContext &C);
+	static void handleMemoryDeallocations(int handler, const CallEvent &Call, CheckerContext &C);
+};
