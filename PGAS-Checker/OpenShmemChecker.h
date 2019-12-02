@@ -11,8 +11,4 @@ namespace OpenShmemConstants {
   const std::string SHMEM_BARRIER = "shmem_barrier_all";
 }
 
-namespace OpenShmemChecker {
-  void addHandlers();
-}
-
 #endif

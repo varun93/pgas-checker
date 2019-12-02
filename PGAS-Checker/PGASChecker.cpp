@@ -4,43 +4,74 @@ typedef std::unordered_map<int, Handler> defaultHandlers;
 defaultHandlers defaults;
 routineHandlers handlers;
 
+void flushState(CheckerContext &C, ProgramStateRef State) {
+  C.addTransition(State);
+}
+
+ProgramStateRef getStateFromContext(CheckerContext &C) {
+  ProgramStateRef State = C.getState();
+  return State;
+}
+
 // remove from the untialized list
-void removeFromUnitializedList(ProgramStateRef State, SymbolRef variable) {
-    if (State->contains<UnintializedVariables>(variable)) {
-      State = State->remove<UnintializedVariables>(variable);
-    }
+void removeFromUnitializedList(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
+  if (State->contains<UnintializedVariables>(variable)) {
+    State = State->remove<UnintializedVariables>(variable);
+  }
+  flushState(C, State);
+}
+
+void removeFromFreeList(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
+  if (State->contains<FreedVariables>(variable)) {
+    State = State->remove<FreedVariables>(variable);
+  }
+  flushState(C, State);
 }
 
 // add to the free list
-void addToFreeList(ProgramStateRef State, SymbolRef variable) {
-    State = State->add<FreedVariables>(variable);
+void addToFreeList(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
+  State = State->add<FreedVariables>(variable);
+  flushState(C, State);
 }
 
+void addToUnintializedList(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
+  State = State->add<UnintializedVariables>(variable);
+  flushState(C, State);
+}
 
-void removeFromState(ProgramStateRef State, SymbolRef variable) {
+// remove the variable program state  
+void removeFromState(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
   const RefState *SS = State->get<CheckerState>(variable);
-  
   if(SS){  
     State = State->remove<CheckerState>(variable);
   }
-
+  flushState(C, State);
 }
 
 // mark as unsynchronized
-void markAsUnsynchronized(ProgramStateRef State, SymbolRef variable) {
-
-  const RefState *SS = State->get<CheckerState>(variable);
-
+void markAsUnsynchronized(CheckerContext &C, SymbolRef variable) {
+  ProgramStateRef State = getStateFromContext(C);
   // now mark the variable as unsynchronized on a *_put operation
-  if (SS && SS->isSynchronized()) {
-    State = State->set<CheckerState>(variable, RefState::getUnsynchronized());
-  }
+  State = State->set<CheckerState>(variable, RefState::getUnsynchronized());
+  flushState(C, State);
+}
 
+
+void markAsSynchronized(CheckerContext &C, SymbolRef variable) {
+  // ProgramStateRef State = getStateFromContext(C);
+  ProgramStateRef State = C.getState();
+  State = State->set<CheckerState>(variable, RefState::getSynchronized());
+  C.addTransition(State);
+  // flushState(C, State);
 }
 
 
 void DefaultHandlers::handleMemoryAllocations(int handler, const CallEvent &Call, CheckerContext &C) {
-
   ProgramStateRef State = C.getState();
   SymbolRef allocatedVariable = Call.getReturnValue().getAsSymbol();
      
@@ -50,20 +81,13 @@ void DefaultHandlers::handleMemoryAllocations(int handler, const CallEvent &Call
     break;
 
     case POST_CALL: 
-      
       // add unitilized variables to unitilized list
-      State = State->add<UnintializedVariables>(allocatedVariable);
+      addToUnintializedList(C, allocatedVariable);
       // mark is synchronized by default
-      State = State->set<CheckerState>(allocatedVariable, RefState::getSynchronized());
-
+      markAsSynchronized(C, allocatedVariable);
       // remove the variable from the freed list if allocated again
-      if(State->contains<FreedVariables>(allocatedVariable)){
-        State = State->remove<FreedVariables>(allocatedVariable);
-      } 
-
-      C.addTransition(State);
+      removeFromFreeList(C, allocatedVariable);
       break;
-
   }
 
 }
@@ -82,61 +106,40 @@ void DefaultHandlers::handleBarriers(int handler, const CallEvent &Call, Checker
           for (CheckerStateTy::iterator I = trackedVariables.begin(),
                                   E = trackedVariables.end(); I != E; ++I) {
             SymbolRef symmetricVariable = I->first;
-            const RefState *SS = State->get<CheckerState>(symmetricVariable);
             // mark all symmetric variables as synchronized
-            if (SS && SS->isUnSynchronized()) {
-              State = State->set<CheckerState>(symmetricVariable, RefState::getSynchronized());
-              C.addTransition(State);
-           }
+            markAsSynchronized(C, symmetricVariable);
           }
         break;
-  }
+    }
 }
 
 void DefaultHandlers::handleNonBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C) {
-
-  ProgramStateRef State = C.getState();
   SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
-
 
   if(!destVariable) {
     return;
   }
 
-
   switch(handler) {
-
     case PRE_CALL : break;
-
     case POST_CALL : 
       // remove the unintialized variables
-      removeFromUnitializedList(State, destVariable);
+      removeFromUnitializedList(C, destVariable);
       // mark as unsynchronized
-      markAsUnsynchronized(State, destVariable);
-     
-      C.addTransition(State);
+      markAsUnsynchronized(C, destVariable);
       break;
   }
-
 }
 
 void DefaultHandlers::handleBlockingWrites(int handler, const CallEvent &Call, CheckerContext &C) {
-
-  ProgramStateRef State = C.getState();
-  SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
-
   switch(handler) {
-
     case PRE_CALL : break;
-
     case POST_CALL : 
-       
-      removeFromUnitializedList(State, destVariable);
-    
-      C.addTransition(State);
+      SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
+      // remove from uninitilized list
+      removeFromUnitializedList(C, destVariable);
       break;
   }
-
 }
 
 void DefaultHandlers::handleReads(int handler, const CallEvent &Call, CheckerContext &C) {
@@ -145,7 +148,6 @@ void DefaultHandlers::handleReads(int handler, const CallEvent &Call, CheckerCon
   SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
   const RefState *SS = State->get<CheckerState>(symmetricVariable);
   
-
   switch(handler) {
 
     case PRE_CALL : 
@@ -181,17 +183,16 @@ void DefaultHandlers::handleMemoryDeallocations(int handler, const CallEvent &Ca
         break;
       case POST_CALL : 
         // add it to the freed variable set; since it is adding it multiple times should have the same effect
-        addToFreeList(State, freedVariable);
+        addToFreeList(C, freedVariable);
         //stop tracking freed variable
-        removeFromState(State, freedVariable);
-        C.addTransition(State);
+        removeFromState(C, freedVariable);
       break;
    }
  
 }
 
-PGASChecker::PGASChecker(void (*addHandlers)()) { 
-  addHandlers();
+PGASChecker::PGASChecker(routineHandlers (*addHandlers)()) { 
+  handlers = addHandlers();
   addDefaultHandlers();
 } 
 
