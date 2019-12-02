@@ -27,9 +27,9 @@ key of the map and the value being a pair of <RoutineType, FunctionPointer>. The
 - Navigate to `clang/lib/StaticAnalyzer/Checkers` directory.
 - Add your checker file.Include the checker file in the `CMakeLists.txt` file.
 - Enter the following lines in `include/clang/StaticAnalyzer/Checkers/Checkers.td`
-    ```def PGASChecker : Checker<"PGASChecker">,
-       HelpText<"Checks correctness of a PGAS program">,
-       DescFile<"PGASChecker.cpp">;
+    ```def OpenShmemChecker : Checker<"OpenShmemChecker">,
+       HelpText<"Checks correctness of a OpenShmem program">,
+       DescFile<"OpenShmemChecker.cpp">;
     ```
 - Build clang - Navigate to the build directory, do `make clang -j CORES_NUM`
 
