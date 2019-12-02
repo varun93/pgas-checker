@@ -1,25 +1,18 @@
- extern routineHandlers handlers;
- 
- class OpenShmemConstants {
-  public:
-    static const std::string SHMEM_MALLOC;
-    static const std::string SHMEM_GET;
-    static const std::string SHMEM_PUT;
-    static const std::string SHMEM_FREE;
-    static const std::string SHMEM_BARRIER;
-  };
+#ifndef __OPENSHMEM_CHECK
+#define __OPENSHMEM_CHECK
 
+#include "PGASChecker.h"
 
- class OpenShmemChecker {
-   public:
-    static void addHandlers();
- };
+namespace OpenShmemConstants {
+  const std::string SHMEM_MALLOC = "shmem_malloc";
+  const std::string SHMEM_GET = "shmem_get";
+  const std::string SHMEM_PUT = "shmem_put";
+  const std::string SHMEM_FREE = "shmem_free";
+  const std::string SHMEM_BARRIER = "shmem_barrier_all";
+}
 
- class OpenShmemErrorMessages {
-  public:
-    static const std::string VARIABLE_NOT_SYMMETRIC;
-    static const std::string UNSYNCHRONIZED_ACCESS;
-    static const std::string ACCESS_FREED_VARIABLE;
-    static const std::string ACCESS_UNINTIALIZED_VARIABLE;
-  };
+namespace OpenShmemChecker {
+  void addHandlers();
+}
 
+#endif

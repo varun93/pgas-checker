@@ -1,100 +1,27 @@
-  // TODO: remove uncessary imports
-  
-  #include "PGASChecker.h"
-  #include "OpenShmemChecker.h"
-  
-  using namespace clang;
-  using namespace ento;
+#include "PGASChecker.h"
 
-  enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
-  typedef std::unordered_map<int, Handler> defaultHandlers;
-  defaultHandlers defaults;
+typedef std::unordered_map<int, Handler> defaultHandlers;
+defaultHandlers defaults;
+routineHandlers handlers;
 
-  namespace {
-
-    // this is a custom data structure 
-    // the user is free to define custom data structures as long as they overload the == operator and override Profile method
-    struct RefState {
-      private:
-        enum Kind { Synchronized, Unsynchronized } K;
-        RefState(Kind InK) : K(InK) { }
-
-      public:
-        bool isSynchronized() const { return K == Synchronized; }
-        bool isUnSynchronized() const { return K == Unsynchronized; }
-
-        static RefState getSynchronized() { return RefState(Synchronized); }
-        static RefState getUnsynchronized() { return RefState(Unsynchronized); }
-
-        // overloading of == comparison operator 
-        bool operator==(const RefState &X) const {
-          return K == X.K;
-        }
-        void Profile(llvm::FoldingSetNodeID &ID) const {
-          ID.AddInteger(K);
-        }
-    };
-
-  class PGASChecker : public Checker <check::PostCall, check::PreCall> {
-    mutable std::unique_ptr<BugType> BT;
-    
-    private:
-      void eventHandler(int handler, std::string &routineName, 
-                      const CallEvent &Call, CheckerContext &C) const;
-      void addDefaultHandlers();
-      Handler getDefaultHandler(Routine routineType) const;
-
-    // define the event listeners; in our case pre and post call
-    public:
-      void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
-      void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
-
-      PGASChecker() { 
-        OpenShmemChecker::addHandlers();
-        // add default handlers here
-        addDefaultHandlers();
-
-      } 
-
-    };
-  }
-  
-
-  // map to hold the state of the variable; synchronized or unsynchronized
-  REGISTER_MAP_WITH_PROGRAMSTATE(CheckerState, SymbolRef, RefState)
-  // set of unitilized variables
-  REGISTER_SET_WITH_PROGRAMSTATE(UnintializedVariables, SymbolRef)
-  // set of freed variables
-  REGISTER_SET_WITH_PROGRAMSTATE(FreedVariables, SymbolRef)
-
-  // int* source = (int*) shmem_malloc(npes*sizeof(int));
-  // shmem_put(TYPE *dest, const TYPE *source, size_t nelems, int pe);
-  // shmem_get(TYPE *dest, const TYPE *source, size_t nelems, int pe);
-
-  // TODO
-  bool checkIfSymmetric(SymbolRef variable, ProgramStateRef State) {
-    return false;
-  }
-
-  // TODO
-  bool checkIfFreed(SymbolRef variable, ProgramStateRef State) {
-    return false;
-  }
-
-  void PGASChecker::addDefaultHandlers() {
-    defaults.emplace(MEMORY_ALLOC, DefaultHandlers::handleMemoryAllocations);
-    defaults.emplace(MEMORY_DEALLOC, DefaultHandlers::handleMemoryDeallocations);
-    defaults.emplace(SYNCHRONIZATION, DefaultHandlers::handleBarriers);
-    defaults.emplace(NON_BLOCKING_WRITE, DefaultHandlers::handleNonBlockingWrites);
-    defaults.emplace(READ_FROM_MEMORY, DefaultHandlers::handleReads);
-}
-
-  
 // remove from the untialized list
 void removeFromUnitializedList(ProgramStateRef State, SymbolRef variable) {
-
-  if(State->contains<UnintializedVariables>(variable)){
+    if (State->contains<UnintializedVariables>(variable)) {
       State = State->remove<UnintializedVariables>(variable);
+    }
+}
+
+// add to the free list
+void addToFreeList(ProgramStateRef State, SymbolRef variable) {
+    State = State->add<FreedVariables>(variable);
+}
+
+
+void removeFromState(ProgramStateRef State, SymbolRef variable) {
+  const RefState *SS = State->get<CheckerState>(variable);
+  
+  if(SS){  
+    State = State->remove<CheckerState>(variable);
   }
 
 }
@@ -106,8 +33,9 @@ void markAsUnsynchronized(ProgramStateRef State, SymbolRef variable) {
 
   // now mark the variable as unsynchronized on a *_put operation
   if (SS && SS->isSynchronized()) {
-      State = State->set<CheckerState>(variable, RefState::getUnsynchronized());
-   }
+    State = State->set<CheckerState>(variable, RefState::getUnsynchronized());
+  }
+
 }
 
 
@@ -170,10 +98,12 @@ void DefaultHandlers::handleNonBlockingWrites(int handler, const CallEvent &Call
   ProgramStateRef State = C.getState();
   SymbolRef destVariable = Call.getArgSVal(0).getAsSymbol();
 
+
   if(!destVariable) {
     return;
   }
-  
+
+
   switch(handler) {
 
     case PRE_CALL : break;
@@ -222,13 +152,13 @@ void DefaultHandlers::handleReads(int handler, const CallEvent &Call, CheckerCon
 
       if(State->contains<UnintializedVariables>(symmetricVariable)){
         // TODOS: replace couts with bug reports 
-        std::cout << OpenShmemErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
+        std::cout << ErrorMessages::ACCESS_UNINTIALIZED_VARIABLE;
         return;
      }  
   
      // if the user is trying to access an unintialized bit of memory
      if (SS && SS->isUnSynchronized()) {
-      std::cout << OpenShmemErrorMessages::UNSYNCHRONIZED_ACCESS;
+      std::cout << ErrorMessages::UNSYNCHRONIZED_ACCESS;
       return;
      }
 
@@ -251,124 +181,126 @@ void DefaultHandlers::handleMemoryDeallocations(int handler, const CallEvent &Ca
         break;
       case POST_CALL : 
         // add it to the freed variable set; since it is adding it multiple times should have the same effect
-        State = State->add<FreedVariables>(freedVariable);
-        
-        // stop tracking the variables which have been tracked
-        const RefState *SS = State->get<CheckerState>(freedVariable);
-        if(SS){  
-          // remove from the map
-          State = State->remove<CheckerState>(freedVariable);
-        }
+        addToFreeList(State, freedVariable);
+        //stop tracking freed variable
+        removeFromState(State, freedVariable);
         C.addTransition(State);
       break;
    }
  
-   
 }
 
+PGASChecker::PGASChecker(void (*addHandlers)()) { 
+  addHandlers();
+  addDefaultHandlers();
+} 
 
-  
-  Handler PGASChecker::getDefaultHandler(Routine routineType) const {
+// int* source = (int*) shmem_malloc(npes*sizeof(int));
+// shmem_put(TYPE *dest, const TYPE *source, size_t nelems, int pe);
+// shmem_get(TYPE *dest, const TYPE *source, size_t nelems, int pe);
+void PGASChecker::addDefaultHandlers() {
+  defaults.emplace(MEMORY_ALLOC, DefaultHandlers::handleMemoryAllocations);
+  defaults.emplace(MEMORY_DEALLOC, DefaultHandlers::handleMemoryDeallocations);
+  defaults.emplace(SYNCHRONIZATION, DefaultHandlers::handleBarriers);
+  defaults.emplace(NON_BLOCKING_WRITE, DefaultHandlers::handleNonBlockingWrites);
+  defaults.emplace(READ_FROM_MEMORY, DefaultHandlers::handleReads);
+}
 
-      defaultHandlers::const_iterator iterator = defaults.find(routineType);
-
-      if(iterator != defaults.end()) {
-          return iterator->second; 
-      }
-
-      return (Handler)NULL;
-  }
-
-  void PGASChecker::eventHandler(int handler, std::string &routineName, 
-                      const CallEvent &Call, CheckerContext &C) const {
-
-      Handler routineHandler = NULL;
-      routineHandlers::const_iterator iterator = handlers.find(routineName);
-      
-      if(iterator != handlers.end()) {
-
-        Pair value = iterator->second;
-        Routine routineType = value.first;
-        
-        // if the event handler exists invoke it; else call the default implementation
-        if(value.second) {
-          routineHandler = value.second ;
-        }
-        else {
-          routineHandler = getDefaultHandler(routineType);
-        }
-
-        if(routineHandler != NULL) {
-            routineHandler(handler, Call, C);
-        }
-        else{
-            std::cout << "No implementation found for this routine!\n";
-        }
-
-      }
-  
-  }
  
-  void PGASChecker::checkPostCall(const CallEvent &Call,
-                                          CheckerContext &C) const {
-    const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+Handler PGASChecker::getDefaultHandler(Routine routineType) const {
 
-    if (!FD)
-      return;
+    defaultHandlers::const_iterator iterator = defaults.find(routineType);
 
-    // get the invoked routine name
-    std::string routineName = FD->getNameInfo().getAsString();
-
-    eventHandler(POST_CALL, routineName, Call, C);
-    
-  }
-
-  void PGASChecker::checkPreCall(const CallEvent &Call,
-                                         CheckerContext &C) const {
-
-    const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
-
-    if (!FD)
-      return;
-
-    // TODO: Temp fix! place these checks into seperate functions
-    if(Call.getNumArgs() < 1)
-      return;
-
-    // TODO: remove the harcoding of variable index; 
-    SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
-    
-    if(!symmetricVariable)
-      return;
-
-
-    // TODO: extract this out of the function
-    ProgramStateRef State = C.getState();
-
-    const RefState *SS = State->get<CheckerState>(symmetricVariable);
-
-    if (!SS) {
-      // TODOS: replace couts with bug reports
-      std::cout << OpenShmemErrorMessages::VARIABLE_NOT_SYMMETRIC;
-      return;
+    if(iterator != defaults.end()) {
+        return iterator->second; 
     }
 
-    // complain if an access it made to the freed variables 
-    if(State->contains<FreedVariables>(symmetricVariable)){
-      // TODOS: replace couts with bug reports 
-      std::cout << OpenShmemErrorMessages::ACCESS_FREED_VARIABLE;
-      return;
+    return (Handler)NULL;
+}
+
+void PGASChecker::eventHandler(int handler, std::string &routineName, 
+                    const CallEvent &Call, CheckerContext &C) const {
+
+    Handler routineHandler = NULL;
+    routineHandlers::const_iterator iterator = handlers.find(routineName);
+    
+    if(iterator != handlers.end()) {
+
+      Pair value = iterator->second;
+      Routine routineType = value.first;
+      
+      // if the event handler exists invoke it; else call the default implementation
+      if(value.second) {
+        routineHandler = value.second ;
+      }
+      else {
+        routineHandler = getDefaultHandler(routineType);
+      }
+
+      if(routineHandler != NULL) {
+          routineHandler(handler, Call, C);
+      }
+      else{
+          std::cout << "No implementation found for this routine!\n";
+      }
+
     }
+
+}
+ 
+void PGASChecker::checkPostCall(const CallEvent &Call,
+                                        CheckerContext &C) const {
+  const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+
+  if (!FD)
+    return;
+
+  // get the invoked routine name
+  std::string routineName = FD->getNameInfo().getAsString();
+
+  eventHandler(POST_CALL, routineName, Call, C);
   
-    // get the name of the invoked routine
-    std::string routineName = FD->getNameInfo().getAsString();
+}
 
-    eventHandler(PRE_CALL, routineName, Call, C);
-   
+void PGASChecker::checkPreCall(const CallEvent &Call,
+                                       CheckerContext &C) const {
+
+  const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+
+  if (!FD)
+    return;
+
+  // TODO: Temp fix! place these checks into seperate functions
+  if(Call.getNumArgs() < 1)
+    return;
+
+  // TODO: remove the harcoding of variable index; 
+  SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
+  
+  if(!symmetricVariable)
+    return;
+
+  // TODO: extract this out of the function
+  ProgramStateRef State = C.getState();
+
+  const RefState *SS = State->get<CheckerState>(symmetricVariable);
+
+  if (!SS) {
+    // TODOS: replace couts with bug reports
+    std::cout << ErrorMessages::VARIABLE_NOT_SYMMETRIC;
+    return;
   }
 
-  void ento::registerPGASChecker(CheckerManager &mgr) {
-    mgr.registerChecker<PGASChecker>();
+  // complain if an access it made to the freed variables 
+  if(State->contains<FreedVariables>(symmetricVariable)){
+    // TODOS: replace couts with bug reports 
+    std::cout << ErrorMessages::ACCESS_FREED_VARIABLE;
+    return;
   }
 
+  // get the name of the invoked routine
+  std::string routineName = FD->getNameInfo().getAsString();
 
+  eventHandler(PRE_CALL, routineName, Call, C);
+ 
+}
