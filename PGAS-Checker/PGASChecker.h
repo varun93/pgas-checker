@@ -64,10 +64,6 @@ REGISTER_SET_WITH_PROGRAMSTATE(FreedVariables, SymbolRef)
 
 enum HANDLERS {PRE_CALL = 0, POST_CALL = 1}; 
 
-
-extern routineHandlers handlers;
-
-
 namespace ErrorMessages {
   const std::string VARIABLE_NOT_SYMMETRIC = "Not a symmetric variable";
   const std::string UNSYNCHRONIZED_ACCESS = "Unsynchronized access to variable";
@@ -98,7 +94,7 @@ class PGASChecker : public Checker <check::PostCall, check::PreCall> {
   public:
     void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
     void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
-    PGASChecker(void (*addHandlers)());
+    PGASChecker(routineHandlers (*addHandlers)());
 
 };
 
