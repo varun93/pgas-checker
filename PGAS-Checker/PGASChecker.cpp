@@ -217,33 +217,6 @@ void PGASChecker::checkPreCall(const CallEvent &Call, CheckerContext &C) const {
   if (!FD)
     return;
 
-  if (Call.getNumArgs() < 1)
-    return;
-
-  // TODO: remove the harcoding of variable index;
-  SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
-
-  if (!symmetricVariable)
-    return;
-
-  // TODO: extract this out of the function
-  ProgramStateRef State = C.getState();
-
-  const RefState *SS = State->get<CheckerState>(symmetricVariable);
-
-  if (!SS) {
-    // TODOS: replace couts with bug reports
-    std::cout << ErrorMessages::VARIABLE_NOT_SYMMETRIC;
-    return;
-  }
-
-  // complain if an access it made to the freed variables
-  if (State->contains<FreedVariables>(symmetricVariable)) {
-    // TODOS: replace couts with bug reports
-    std::cout << ErrorMessages::ACCESS_FREED_VARIABLE;
-    return;
-  }
-
   // get the name of the invoked routine
   std::string routineName = FD->getNameInfo().getAsString();
 
