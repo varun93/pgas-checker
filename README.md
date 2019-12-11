@@ -48,6 +48,10 @@ clang -Xanalyzer -analyzer-checker=core.OpenSHMEMChecker --analyze PROGRAM_TO_TE
 
 ## TODO
 
-- Add proper bug report.
 - Yet to add support for catching other synchronization mechanisms like quiet etc. 
 - Synchronization mechanisms for symmetric variables allocated via static and global variables. 
+
+## Useful Resources
+
+- https://clang-analyzer.llvm.org/checker_dev_manual.html
+- https://llvm.org/devmtg/2012-11/Zaks-Rose-Checker24Hours.pdf
