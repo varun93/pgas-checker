@@ -1,11 +1,18 @@
 #include "OpenShmemChecker.h"
-
+/**
+ * @brief
+ *
+ * @param handler
+ * @param Call
+ * @param C
+ */
 void shmemGetHandler(int handler, const CallEvent &Call, CheckerContext &C) {
 
   if (Call.getNumArgs() < 1)
     return;
 
   // TODO: remove the harcoding of variable index;
+
   SymbolRef symmetricVariable = Call.getArgSVal(0).getAsSymbol();
 
   if (!symmetricVariable)
@@ -49,6 +56,7 @@ routineHandlers addHandlers() {
   return handlers;
 }
 
+// Register the new checker
 void ento::registerOpenShmemChecker(CheckerManager &mgr) {
   mgr.registerChecker<PGASChecker, routineHandlers (*)()>(addHandlers);
 }
